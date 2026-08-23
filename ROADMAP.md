@@ -7,7 +7,7 @@
 ## 🎯 Vision & Core Principles
 
 1. **Micro-Size Deltas**: Achieve $\le 5\%$ payload deltas on massive binaries through PE/IL-aware relocation normalization and high-entropy subtractive difference encoding.
-2. **Sub-Second Patching**: Guarantee instant, non-blocking client updates with bounded memory ($\le 250\text{ MB}$) and high-throughput Zstandard decompression.
+2. **Sub-Second Patching**: Guarantee instant, non-blocking client updates with bounded memory ($\le 120\text{ MB}$) and high-throughput Zstandard decompression.
 3. **Modern Runtime First**: First-class Native AOT, .NET 8/9 LTS, and multi-architecture execution (x64, ARM64, x86).
 4. **Resilient Streaming**: Streamed HTTP Range updates with block-level cryptographic verification and atomic rollbacks.
 
@@ -18,21 +18,22 @@
 ```mermaid
 gantt
     title Burrow v2.0 Development Roadmap
-    dateFormat  YYYY-Q#
+    dateFormat YYYY-MM-DD
+    axisFormat %Y-Q%q
     section Core Engine
-    PE/IL-Aware Diffing (ZstdDiff3)       :2026-Q1, 45d
-    Multi-Threaded FastCDC Chunking        :2026-Q1, 30d
+    PE/IL-Aware Diffing (ZstdDiff3)       :2026-01-01, 45d
+    Multi-Threaded FastCDC Chunking        :2026-02-15, 30d
     section Runtime & Platform
-    .NET 8/9 LTS Multi-Targeting          :2026-Q2, 30d
-    Native AOT Update & Setup Stubs       :2026-Q2, 45d
-    ARM64 Native Windows Support          :2026-Q2, 30d
+    .NET 8/9 LTS Multi-Targeting          :2026-04-01, 30d
+    Native AOT Update & Setup Stubs       :2026-05-01, 45d
+    ARM64 Native Windows Support          :2026-06-01, 30d
     section Network & Streaming
-    HTTP Range Streaming Updates          :2026-Q3, 40d
-    Zero-Temp Direct Disk Patching        :2026-Q3, 30d
+    HTTP Range Streaming Updates          :2026-07-01, 40d
+    Zero-Temp Direct Disk Patching        :2026-08-10, 30d
     section Tooling & Fleet Ops
-    Modern `burrow` Global CLI Tool       :2026-Q4, 30d
-    Staged Rollouts & Canary Rings        :2026-Q4, 45d
-    Azure KeyVault / HSM Signing          :2026-Q4, 30d
+    Modern Burrow Global CLI Tool         :2026-10-01, 30d
+    Staged Rollouts & Canary Rings        :2026-10-15, 45d
+    Azure KeyVault / HSM Signing          :2026-11-15, 30d
 ```
 
 ---

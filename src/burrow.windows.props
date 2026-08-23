@@ -1,5 +1,6 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
+    <BurrowToolsPath>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)..\tools'))</BurrowToolsPath>
     <SquirrelToolsPath>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)..\tools'))</SquirrelToolsPath>
   </PropertyGroup>
 </Project>

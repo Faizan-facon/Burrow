@@ -1,11 +1,14 @@
-using System;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using NuGet;
 using Squirrel;
 using Squirrel.SimpleSplat;
 using Squirrel.Tests.TestHelpers;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace Squirrel.Tests.Core
@@ -68,6 +71,97 @@ namespace Squirrel.Tests.Core
                     File.Delete(outFile);
                 }
             }
+        }
+
+        [Fact]
+        public void DiagnoseFailingBsdiffEntries()
+        {
+            var basePackage = new ReleasePackage(IntegrationTestHelper.GetPath("fixtures", "slack-1.1.8-full.nupkg"));
+            var deltaPackage = new ReleasePackage(IntegrationTestHelper.GetPath("fixtures", "slack-1.2.0-delta.nupkg"));
+
+            Utility.WithTempDirectory(out var basePath, null);
+            Utility.WithTempDirectory(out var deltaPath, null);
+
+            ExtractZip(basePackage.InputPackageFile, basePath);
+            ExtractZip(deltaPackage.InputPackageFile, deltaPath);
+
+            var diagDir = Path.Combine(Path.GetTempPath(), "bsdiff_diag_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(diagDir);
+            Console.WriteLine($"Diagnostic dir: {diagDir}");
+
+            var bsdiffFiles = new DirectoryInfo(deltaPath).GetFiles("*.bsdiff", SearchOption.AllDirectories);
+            Console.WriteLine($"Found {bsdiffFiles.Length} .bsdiff entries");
+
+            var failures = new List<string>();
+
+            foreach (var bsdiffFile in bsdiffFiles)
+            {
+                var relativePath = bsdiffFile.FullName.Substring(deltaPath.Length).TrimStart(Path.DirectorySeparatorChar);
+                var oldRelative = Regex.Replace(relativePath, @"\.bsdiff$", "");
+                var oldFilePath = Path.Combine(basePath, oldRelative);
+
+                if (!File.Exists(oldFilePath))
+                {
+                    Console.WriteLine($"[SKIP] {relativePath} -- no matching base file at {oldFilePath}");
+                    continue;
+                }
+
+                try
+                {
+                    using (var inf = File.OpenRead(oldFilePath))
+                        using (var of = new MemoryStream())
+                    {
+                    Squirrel.Bsdiff.BinaryPatchUtility.Apply(inf, () => File.OpenRead(bsdiffFile.FullName), of);
+                    Console.WriteLine($"[OK]   {relativePath} ({bsdiffFile.Length} byte patch, {new FileInfo(oldFilePath).Length} -> {of.Length} bytes)");
+
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failures.Add(relativePath);
+                    Console.WriteLine($"[FAIL] {relativePath}: {ex.GetType().Name}: {ex.Message}");
+
+                    var dumpPath = Path.Combine(diagDir, Path.GetFileName(bsdiffFile.FullName));
+                    File.Copy(bsdiffFile.FullName, dumpPath, true);
+                    File.Copy(oldFilePath, dumpPath + ".oldfile", true);
+                    Console.WriteLine($"  patch copied to:    {dumpPath}");
+                    Console.WriteLine($"  old file copied to: {dumpPath}.oldfile");
+
+                    var patchBytes = File.ReadAllBytes(bsdiffFile.FullName);
+                    long signature = ReadInt64(patchBytes, 0);
+                    long controlLength = ReadInt64(patchBytes, 8);
+                    long diffLength = ReadInt64(patchBytes, 16);
+                    long newSize = ReadInt64(patchBytes, 24);
+                    Console.WriteLine($"  signature=0x{signature:X16} controlLength={controlLength} " +
+                                       $"diffLength={diffLength} newSize={newSize} totalPatchLen={patchBytes.Length}");
+                }
+            }
+
+            Console.WriteLine();
+            Console.WriteLine($"Total: {bsdiffFiles.Length}, failed: {failures.Count}");
+            foreach (var f in failures) Console.WriteLine($"  - {f}");
+
+            Assert.Empty(failures); // fails the test with the summary above still printed
+        }
+
+        static void ExtractZip(string zipPath, string destDir)
+        {
+            using (var za = ZipFile.OpenRead(zipPath))
+                foreach (var entry in za.Entries)
+                {
+                    var targetFile = Path.Combine(destDir, entry.FullName);
+                    var dir = Path.GetDirectoryName(targetFile);
+                    if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    if (!string.IsNullOrEmpty(entry.Name)) entry.ExtractToFile(targetFile, overwrite: true);
+                }
+        }
+
+        static long ReadInt64(byte[] buf, int offset)
+        {
+            long value = buf[offset + 7] & 0x7F;
+            for (int index = 6; index >= 0; index--) { value *= 256; value += buf[offset + index]; }
+            if ((buf[offset + 7] & 0x80) != 0) value = -value;
+            return value;
         }
 
         [Fact(Skip = "Rewrite this test, the original uses too many heavyweight fixtures")]

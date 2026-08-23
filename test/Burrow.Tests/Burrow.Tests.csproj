@@ -1,9 +1,9 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net45</TargetFramework>
-    <Description>Squirrel.Tests</Description>
-    <Title>Squirrel.Tests</Title>
+    <TargetFramework>net48</TargetFramework>
+    <Description>Burrow.Tests</Description>
+    <Title>Burrow.Tests</Title>
     <IsPackable>false</IsPackable>
     <IsTest>true</IsTest>
   </PropertyGroup>
@@ -14,12 +14,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Squirrel\Squirrel.csproj" />
-    <ProjectReference Include="..\..\vendor\nuget\src\Core\Core.csproj" />
+    <ProjectReference Include="..\..\src\Burrow\Burrow.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.IO.Compression" />
   </ItemGroup>
 
   <ItemGroup>

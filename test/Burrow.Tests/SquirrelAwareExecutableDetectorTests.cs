@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -16,10 +16,10 @@ namespace Squirrel.Tests
     {
 #if DEBUG
         private const string NativeBuildRootRelativePath = @"..\..\Win32\";
-        private const string ManagedBuildRootRelativePath = @"..\..\net45\";
+        private const string ManagedBuildRootRelativePath = @"..\..\net48\";
 #else
         private const string NativeBuildRootRelativePath = @"..\..\Win32\";
-        private const string ManagedBuildRootRelativePath = @"..\..\net45\";
+        private const string ManagedBuildRootRelativePath = @"..\..\net48\";
 #endif
 
         [Fact]

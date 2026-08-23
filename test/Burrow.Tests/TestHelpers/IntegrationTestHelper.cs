@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -8,9 +8,7 @@ using Squirrel;
 using Squirrel.SimpleSplat;
 using Xunit;
 using System.Text;
-using SharpCompress.Archives.Zip;
-using SharpCompress.Readers;
-using SharpCompress.Common;
+using System.IO.Compression;
 using System.Reflection;
 
 namespace Squirrel.Tests.TestHelpers
@@ -128,11 +126,7 @@ namespace Squirrel.Tests.TestHelpers
             var zipPath = GetPath("fixtures", zipFile);
             Assert.True(File.Exists(zipPath));
 
-            var opts = new ExtractionOptions() { ExtractFullPath = true, Overwrite = true, PreserveFileTime = true };
-            using (var za = ZipArchive.Open(zipFile))
-            using (var reader = za.ExtractAllEntries()) {
-                reader.WriteEntryToDirectory(path, opts);
-            }
+            ZipFile.ExtractToDirectory(zipPath, path);
 
             return ret;
         }

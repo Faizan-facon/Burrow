@@ -17,9 +17,9 @@ if "%VCToolsVersion%"=="" call :StartDeveloperCommandPrompt || exit /b
 
 :: Test
 
-if not exist ..\build\%_C%\test\net45\Squirrel.Tests.dll (echo Run %_S% before running test\test_official.cmd) & (exit -1)
+if not exist ..\build\%_C%\test\net48\Burrow.Tests.dll (echo Run %_S% before running test\test_official.cmd) & (exit -1)
 
-VSTest.Console.exe ..\build\%_C%\test\net45\*.Tests.dll || exit /b
+VSTest.Console.exe ..\build\%_C%\test\net48\*.Tests.dll || exit /b
 
 
 goto LExit
@@ -37,7 +37,7 @@ if not exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
   exit /b 2
 )
 
-for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -version [16.0^,18.0^) -property installationPath`) do (
+for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -version [16.0^,20.0^) -property installationPath`) do (
   if exist "%%i\Common7\Tools\vsdevcmd.bat" (
     call "%%i\Common7\Tools\vsdevcmd.bat" -no_logo
     exit /b

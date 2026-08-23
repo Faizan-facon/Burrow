@@ -12,7 +12,7 @@
     <Company>GitHub</Company>
     <Copyright>Copyright © GitHub 2013-2015</Copyright>
     <PackageLicenseExpression>MS-RL</PackageLicenseExpression>
-    <Product>Squirrel</Product>
+    <Product>Burrow</Product>
   </PropertyGroup>
 
   <ItemGroup Condition=" '$(MSBuildProjectExtension)'=='.csproj' ">
@@ -21,8 +21,8 @@
   </ItemGroup>
 
   <PropertyGroup Condition=" '$(MSBuildProjectExtension)'=='.vcxproj' ">
-    <Platform Condition=" '$(Platform)' == '' OR '$(Platform)' == 'AnyCPU' ">Win32</Platform>
-    <IntDir>$(BaseIntermediateOutputPath)$(Configuration)\$(Platform)\</IntDir>
-    <OutDir>$(OutputPath)$(Platform)\</OutDir>
+    <Platform Condition=" '$(Platform)' == '' OR '$(Platform)' == 'AnyCPU' OR '$(Platform)' == 'Any CPU' ">Win32</Platform>
+    <IntDir>$(BaseIntermediateOutputPath)$(Configuration)\Win32\</IntDir>
+    <OutDir>$(OutputPath)Win32\</OutDir>
   </PropertyGroup>
 </Project>

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -42,7 +42,10 @@ namespace Squirrel.Tests
 
                     // NB: Squirrel-Aware first-run might still be running, slow
                     // our roll before blowing away the temp path
-                    Thread.Sleep(1000);
+                    Thread.Sleep(500);
+                    foreach (var proc in System.Diagnostics.Process.GetProcessesByName("SquirrelAwareApp")) {
+                        try { proc.Kill(); proc.WaitForExit(2000); } catch { }
+                    }
                 }
 
                 var key = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Default)

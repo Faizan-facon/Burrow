@@ -1,19 +1,15 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Squirrel.SimpleSplat;
 using System.ComponentModel;
 using Squirrel.Bsdiff;
-using SharpCompress.Archives;
-using SharpCompress.Archives.Zip;
-using SharpCompress.Writers;
-using SharpCompress.Common;
-using SharpCompress.Readers;
-using SharpCompress.Compressors.Deflate;
+using System.IO.Compression;
 
 namespace Squirrel
 {
@@ -76,13 +72,14 @@ namespace Squirrel
                 // not.
                 var baseLibFiles = baseTempInfo.GetAllFilesRecursively()
                     .Where(x => x.FullName.ToLowerInvariant().Contains("lib" + Path.DirectorySeparatorChar))
-                    .ToDictionary(k => k.FullName.Replace(baseTempInfo.FullName, ""), v => v.FullName);
+                    .ToDictionary(k => getRelativePath(k.FullName, baseTempInfo.FullName).Replace('/', '\\').ToLowerInvariant(), v => v.FullName, StringComparer.OrdinalIgnoreCase);
 
                 var newLibDir = tempInfo.GetDirectories().First(x => x.Name.ToLowerInvariant() == "lib");
 
-                foreach (var libFile in newLibDir.GetAllFilesRecursively()) {
+                var libFiles = newLibDir.GetAllFilesRecursively().ToList();
+                Parallel.ForEach(libFiles, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, libFile => {
                     createDeltaForSingleFile(libFile, tempInfo, baseLibFiles);
-                }
+                });
 
                 ReleasePackage.addDeltaFilesToContentTypes(tempInfo.FullName);
                 Utility.CreateZipFromDirectory(outputFile, tempInfo.FullName).Wait();
@@ -106,46 +103,62 @@ namespace Squirrel
 
             using (Utility.WithTempDirectory(out deltaPath, localAppDirectory))
             using (Utility.WithTempDirectory(out workingPath, localAppDirectory)) {
-                var opts = new ExtractionOptions() { ExtractFullPath = true, Overwrite = true, PreserveFileTime = true };
-
-                using (var za = ZipArchive.Open(deltaPackage.InputPackageFile))
-                using (var reader = za.ExtractAllEntries()) {
-                    reader.WriteAllToDirectory(deltaPath, opts);
+                using (var za = ZipFile.OpenRead(deltaPackage.InputPackageFile)) {
+                    foreach (var entry in za.Entries) {
+                        var targetFile = Path.Combine(deltaPath, entry.FullName);
+                        var dir = Path.GetDirectoryName(targetFile);
+                        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                        if (!string.IsNullOrEmpty(entry.Name)) {
+                            entry.ExtractToFile(targetFile, overwrite: true);
+                        }
+                    }
                 }
 
                 progress(25);
 
-                using (var za = ZipArchive.Open(basePackage.InputPackageFile))
-                using (var reader = za.ExtractAllEntries()) {
-                    reader.WriteAllToDirectory(workingPath, opts);
+                using (var za = ZipFile.OpenRead(basePackage.InputPackageFile)) {
+                    foreach (var entry in za.Entries) {
+                        var targetFile = Path.Combine(workingPath, entry.FullName);
+                        var dir = Path.GetDirectoryName(targetFile);
+                        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                        if (!string.IsNullOrEmpty(entry.Name)) {
+                            entry.ExtractToFile(targetFile, overwrite: true);
+                        }
+                    }
                 }
 
                 progress(50);
 
-                var pathsVisited = new List<string>();
-
-                var deltaPathRelativePaths = new DirectoryInfo(deltaPath).GetAllFilesRecursively()
-                    .Select(x => x.FullName.Replace(deltaPath + Path.DirectorySeparatorChar, ""))
+                var deltaDir = new DirectoryInfo(deltaPath);
+                var deltaPathRelativePaths = deltaDir.GetAllFilesRecursively()
+                    .Select(x => getRelativePath(x.FullName, deltaPath))
                     .ToArray();
 
-                // Apply all of the .diff files
-                deltaPathRelativePaths
+                var diffFiles = deltaPathRelativePaths
                     .Where(x => x.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase))
                     .Where(x => !x.EndsWith(".shasum", StringComparison.InvariantCultureIgnoreCase))
                     .Where(x => !x.EndsWith(".diff", StringComparison.InvariantCultureIgnoreCase) ||
-                                !deltaPathRelativePaths.Contains(x.Replace(".diff", ".bsdiff")))
-                    .ForEach(file => {
-                        pathsVisited.Add(Regex.Replace(file, @"\.(bs)?diff$", "").ToLowerInvariant());
-                        applyDiffToFile(deltaPath, file, workingPath);
-                    });
+                                !deltaPathRelativePaths.Contains(x.Substring(0, x.Length - 5) + ".bsdiff", StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+
+                var pathsVisited = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+                // Apply all of the .diff files in parallel
+                Parallel.ForEach(diffFiles, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, file => {
+                    var cleanName = Regex.Replace(file, @"\.(bs)?diff$", "", RegexOptions.IgnoreCase).Replace('/', '\\').ToLowerInvariant();
+                    pathsVisited.Add(cleanName);
+                    applyDiffToFile(deltaPath, file, workingPath);
+                });
 
                 progress(75);
+
+                var visitedSet = new HashSet<string>(pathsVisited, StringComparer.OrdinalIgnoreCase);
 
                 // Delete all of the files that were in the old package but
                 // not in the new one.
                 new DirectoryInfo(workingPath).GetAllFilesRecursively()
-                    .Select(x => x.FullName.Replace(workingPath + Path.DirectorySeparatorChar, "").ToLowerInvariant())
-                    .Where(x => x.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase) && !pathsVisited.Contains(x))
+                    .Select(x => getRelativePath(x.FullName, workingPath).Replace('/', '\\').ToLowerInvariant())
+                    .Where(x => x.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase) && !visitedSet.Contains(x))
                     .ForEach(x => {
                         this.Log().Info("{0} was in old package but not in new one, deleting", x);
                         File.Delete(Path.Combine(workingPath, x));
@@ -159,16 +172,16 @@ namespace Squirrel
                     .Where(x => !x.StartsWith("lib", StringComparison.InvariantCultureIgnoreCase))
                     .ForEach(x => {
                         this.Log().Info("Updating metadata file: {0}", x);
-                        File.Copy(Path.Combine(deltaPath, x), Path.Combine(workingPath, x), true);
+                        var targetDest = Path.Combine(workingPath, x);
+                        var targetDestDir = Path.GetDirectoryName(targetDest);
+                        if (!Directory.Exists(targetDestDir)) Directory.CreateDirectory(targetDestDir);
+                        File.Copy(Path.Combine(deltaPath, x), targetDest, true);
                     });
 
+                ReleasePackage.removeDeltaFilesFromContentTypes(workingPath);
+
                 this.Log().Info("Repacking into full package: {0}", outputFile);
-                using (var za = ZipArchive.Create())
-                using (var tgt = File.OpenWrite(outputFile)) {
-                    za.DeflateCompressionLevel = CompressionLevel.BestSpeed;
-                    za.AddAllFromDirectory(workingPath);
-                    za.SaveTo(tgt);
-                }
+                Utility.CreateZipFromDirectory(outputFile, workingPath).Wait();
 
                 progress(100);
             }
@@ -187,7 +200,7 @@ namespace Squirrel
             //
             // The fourth case of "Exists only in old => delete it in new"
             // is handled when we apply the delta package
-            var relativePath = targetFile.FullName.Replace(workingDirectory.FullName, "");
+            var relativePath = getRelativePath(targetFile.FullName, workingDirectory.FullName).Replace('/', '\\').ToLowerInvariant();
 
             if (!baseFileListing.ContainsKey(relativePath)) {
                 this.Log().Info("{0} not found in base package, marking as new", relativePath);
@@ -207,22 +220,11 @@ namespace Squirrel
             }
 
             this.Log().Info("Delta patching {0} => {1}", baseFileListing[relativePath], targetFile.FullName);
-            var msDelta = new MsDeltaCompression();
 
-            if (targetFile.Extension.Equals(".exe", StringComparison.OrdinalIgnoreCase) || 
-                targetFile.Extension.Equals(".dll", StringComparison.OrdinalIgnoreCase) ||
-                targetFile.Extension.Equals(".node", StringComparison.OrdinalIgnoreCase)) {
-                try {
-                    msDelta.CreateDelta(baseFileListing[relativePath], targetFile.FullName, targetFile.FullName + ".diff");
-                    goto exit;
-                } catch (Exception) {
-                    this.Log().Warn("We couldn't create a delta for {0}, attempting to create bsdiff", targetFile.Name);
-                }
-            }
-            
             try {
                 using (FileStream of = File.Create(targetFile.FullName + ".bsdiff")) {
-                    BinaryPatchUtility.Create(oldData, newData, of);
+                    var stats = BinaryPatchUtility.Create(oldData, newData, of);
+                    this.Log().Info("Delta created for {0}: {1}", targetFile.Name, stats);
 
                     // NB: Create a dummy corrupt .diff file so that older 
                     // versions which don't understand bsdiff will fail out
@@ -238,8 +240,6 @@ namespace Squirrel
                 return;
             }
 
-        exit:
-
             var rl = ReleaseEntry.GenerateFromFile(new MemoryStream(newData), targetFile.Name + ".shasum");
             File.WriteAllText(targetFile.FullName + ".shasum", rl.EntryAsString, Encoding.UTF8);
             targetFile.Delete();
@@ -251,8 +251,7 @@ namespace Squirrel
             var inputFile = Path.Combine(deltaPath, relativeFilePath);
             var finalTarget = Path.Combine(workingDirectory, Regex.Replace(relativeFilePath, @"\.(bs)?diff$", ""));
 
-            var tempTargetFile = default(string);
-            Utility.WithTempFile(out tempTargetFile, localAppDirectory);
+            var tempTargetFile = Path.Combine(Path.GetTempPath(), "burrow_patch_" + Guid.NewGuid().ToString("N") + ".tmp");
 
             try {
                 // NB: Zero-length diffs indicate the file hasn't actually changed
@@ -313,22 +312,48 @@ namespace Squirrel
             }
         }
 
-        bool bytesAreIdentical(byte[] oldData, byte[] newData)
+        unsafe bool bytesAreIdentical(byte[] oldData, byte[] newData)
         {
             if (oldData == null || newData == null) {
                 return oldData == newData;
             }
-            if (oldData.LongLength != newData.LongLength) {
+            if (oldData.Length != newData.Length) {
                 return false;
             }
 
-            for(long i = 0; i < newData.LongLength; i++) {
-                if (oldData[i] != newData[i]) {
-                    return false;
+            int len = oldData.Length;
+            fixed (byte* pOld = oldData, pNew = newData)
+            {
+                ulong* ptrOld = (ulong*)pOld;
+                ulong* ptrNew = (ulong*)pNew;
+                while (len >= 8)
+                {
+                    if (*ptrOld != *ptrNew) return false;
+                    ptrOld++;
+                    ptrNew++;
+                    len -= 8;
+                }
+
+                byte* pbOld = (byte*)ptrOld;
+                byte* pbNew = (byte*)ptrNew;
+                while (len > 0)
+                {
+                    if (*pbOld != *pbNew) return false;
+                    pbOld++;
+                    pbNew++;
+                    len--;
                 }
             }
-
             return true;
+        }
+
+        static string getRelativePath(string fullPath, string basePath)
+        {
+            if (fullPath.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
+            {
+                return fullPath.Substring(basePath.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            }
+            return fullPath;
         }
     }
 }

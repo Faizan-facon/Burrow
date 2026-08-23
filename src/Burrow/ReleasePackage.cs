@@ -13,8 +13,7 @@ using MarkdownSharp;
 using NuGet;
 using Squirrel.SimpleSplat;
 using System.Threading.Tasks;
-using SharpCompress.Archives.Zip;
-using SharpCompress.Readers;
+using System.IO.Compression;
 
 namespace Squirrel
 {
@@ -167,21 +166,20 @@ namespace Squirrel
         static Task extractZipWithEscaping(string zipFilePath, string outFolder)
         {
             return Task.Run(() => {
-                using (var za = ZipArchive.Open(zipFilePath))
-                using (var reader = za.ExtractAllEntries()) {
-                    while (reader.MoveToNextEntry()) {
-                        var parts = reader.Entry.Key.Split('\\', '/').Select(x => Uri.UnescapeDataString(x));
+                using (var za = ZipFile.OpenRead(zipFilePath)) {
+                    foreach (var entry in za.Entries) {
+                        var parts = entry.FullName.Split('\\', '/').Select(x => Uri.UnescapeDataString(x));
                         var decoded = String.Join(Path.DirectorySeparatorChar.ToString(), parts);
 
                         var fullTargetFile = Path.Combine(outFolder, decoded);
                         var fullTargetDir = Path.GetDirectoryName(fullTargetFile);
-                        Directory.CreateDirectory(fullTargetDir);
+                        if (!Directory.Exists(fullTargetDir)) Directory.CreateDirectory(fullTargetDir);
 
                         Utility.Retry(() => {
-                            if (reader.Entry.IsDirectory) {
+                            if (string.IsNullOrEmpty(entry.Name)) {
                                 Directory.CreateDirectory(Path.Combine(outFolder, decoded));
                             } else {
-                                reader.WriteEntryToFile(Path.Combine(outFolder, decoded));
+                                entry.ExtractToFile(fullTargetFile, overwrite: true);
                             }
                         }, 5);
                     }
@@ -199,18 +197,17 @@ namespace Squirrel
             var re = new Regex(@"lib[\\\/][^\\\/]*[\\\/]", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
             return Task.Run(() => {
-                using (var za = ZipArchive.Open(zipFilePath))
-                using (var reader = za.ExtractAllEntries()) {
+                using (var za = ZipFile.OpenRead(zipFilePath)) {
                     var totalItems = za.Entries.Count;
                     var currentItem = 0;
 
-                    while (reader.MoveToNextEntry()) {
+                    foreach (var entry in za.Entries) {
                         // Report progress early since we might be need to continue for non-matches
                         currentItem++;
-                        var percentage = (currentItem * 100d) / totalItems;
+                        var percentage = (currentItem * 100d) / Math.Max(1, totalItems);
                         progress((int)percentage);
 
-                        var parts = reader.Entry.Key.Split('\\', '/');
+                        var parts = entry.FullName.Split('\\', '/');
                         var decoded = String.Join(Path.DirectorySeparatorChar.ToString(), parts);
 
                         if (!re.IsMatch(decoded)) continue;
@@ -218,10 +215,10 @@ namespace Squirrel
 
                         var fullTargetFile = Path.Combine(outFolder, decoded);
                         var fullTargetDir = Path.GetDirectoryName(fullTargetFile);
-                        Directory.CreateDirectory(fullTargetDir);
+                        if (!Directory.Exists(fullTargetDir)) Directory.CreateDirectory(fullTargetDir);
 
                         var failureIsOkay = false;
-                        if (!reader.Entry.IsDirectory && decoded.Contains("_ExecutionStub.exe")) {
+                        if (!string.IsNullOrEmpty(entry.Name) && decoded.Contains("_ExecutionStub.exe")) {
                             // NB: On upgrade, many of these stubs will be in-use, nbd tho.
                             failureIsOkay = true;
 
@@ -234,10 +231,10 @@ namespace Squirrel
 
                         try {
                             Utility.Retry(() => {
-                                if (reader.Entry.IsDirectory) {
+                                if (string.IsNullOrEmpty(entry.Name)) {
                                     Directory.CreateDirectory(fullTargetFile);
                                 } else {
-                                    reader.WriteEntryToFile(fullTargetFile);
+                                    entry.ExtractToFile(fullTargetFile, overwrite: true);
                                 }
                             }, 5);
                         } catch (Exception e) {
@@ -323,10 +320,32 @@ namespace Squirrel
             package = package ?? new ZipPackage(InputPackageFile);
             packageCache = packageCache ?? new HashSet<string>();
 
-            var deps = package.DependencySets
-                .Where(x => x.TargetFramework == null
-                            || x.TargetFramework == frameworkName)
-                .SelectMany(x => x.Dependencies);
+            IEnumerable<PackageDependency> deps;
+            var sets = package.DependencySets.ToList();
+            if (sets.Count == 0)
+            {
+                deps = Enumerable.Empty<PackageDependency>();
+            }
+            else if (frameworkName != null && sets.Any(x => x.TargetFramework != null))
+            {
+                var compatibleSets = sets
+                    .Where(x => x.TargetFramework != null && VersionUtility.IsCompatible(frameworkName, new[] { x.TargetFramework }))
+                    .OrderByDescending(x => x.TargetFramework.Version)
+                    .ToList();
+
+                if (compatibleSets.Count > 0)
+                {
+                    deps = compatibleSets.First().Dependencies;
+                }
+                else
+                {
+                    deps = sets.FirstOrDefault(x => x.TargetFramework == null)?.Dependencies ?? Enumerable.Empty<PackageDependency>();
+                }
+            }
+            else
+            {
+                deps = sets.Where(x => x.TargetFramework == null).SelectMany(x => x.Dependencies);
+            }
 
             return deps.SelectMany(dependency => {
                 var ret = matchPackage(packageRepository, dependency.Id, dependency.VersionSpec);
@@ -364,6 +383,33 @@ namespace Squirrel
 
             using (var sw = new StreamWriter(path, false, Encoding.UTF8)) {
                 doc.Save(sw);
+            }
+        }
+
+        static internal void removeDeltaFilesFromContentTypes(string rootDirectory)
+        {
+            var path = Path.Combine(rootDirectory, "[Content_Types].xml");
+            if (!File.Exists(path)) return;
+
+            var doc = new XmlDocument();
+            doc.Load(path);
+
+            var typesElement = doc.FirstChild.NextSibling;
+            if (typesElement != null)
+            {
+                var toRemove = typesElement.ChildNodes.OfType<XmlElement>()
+                    .Where(x => {
+                        var ext = x.GetAttribute("Extension").ToLowerInvariant();
+                        return ext == "diff" || ext == "bsdiff" || ext == "shasum";
+                    })
+                    .ToList();
+
+                foreach (var el in toRemove) typesElement.RemoveChild(el);
+
+                using (var sw = new StreamWriter(path, false, Encoding.UTF8))
+                {
+                    doc.Save(sw);
+                }
             }
         }
     }

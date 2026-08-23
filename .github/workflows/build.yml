@@ -1,4 +1,4 @@
-name: Build Squirrel
+name: Build Burrow
 
 on:
   push:
@@ -19,19 +19,18 @@ env:
 jobs:
   build:
     name: Build
-    runs-on: windows-2019
+    runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
 
-      - name: Build Squirrel
+      - name: Build Burrow
         shell: cmd
         run: ./src/build_official.cmd
 
-      - name: Test Squirrel
+      - name: Test Burrow
         shell: cmd
         run: ./test/test_official.cmd
 

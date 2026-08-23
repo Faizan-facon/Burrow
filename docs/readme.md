@@ -9,6 +9,7 @@ This document provides a table of contents for all the Squirrel documentation.
 
 ## General Documentation
 
+* **[Migration Guide](MIGRATION.md)** - complete guide on migrating an existing application from Squirrel.Windows to Burrow.
 * **[Squirrel Goals](goals.md)** - overview of the goals of the Squirrel.Windows project.
 * **[Frequently Asked Questions (FAQ)](faq.md)** - list of frequently asked questions.
 * **[Squirrel.Windows License](../COPYING)** - copyright and license for using Squirrel.Windows

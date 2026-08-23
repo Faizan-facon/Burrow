@@ -31,7 +31,8 @@ Refer to our full list of goals for [integrating, packaging, distributing, insta
 
 ## Documentation
 
-See the documentation [Table of Contents](docs/readme.md) for an overview of the available documentation for Squirrel.Windows. It includes a [Getting Started Guide](docs/getting-started/0-overview.md) as well as additional topics related to using Squirrel in your applications. 
+* **[Migration Guide](MIGRATION.md)**: Step-by-step guide for migrating existing Squirrel.Windows applications to Burrow.
+* See the documentation [Table of Contents](docs/readme.md) for an overview of all available documentation. It includes a [Getting Started Guide](docs/getting-started/0-overview.md) as well as additional topics related to using Squirrel in your applications. 
 
 ## Building Squirrel
 For the impatient:

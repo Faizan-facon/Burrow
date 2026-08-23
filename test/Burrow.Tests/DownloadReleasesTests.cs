@@ -92,7 +92,7 @@ namespace Squirrel.Tests
         }
 
         [Fact(Skip = "Rewrite this to be an integration test")]
-        public async Task DownloadReleasesFromHttpServerIntegrationTest()
+        public void DownloadReleasesFromHttpServerIntegrationTest()
         {
             Assert.False(true, "Rewrite this to not use the SampleUpdatingApp");
 
@@ -146,7 +146,7 @@ namespace Squirrel.Tests
         }
 
         [Fact(Skip = "Rewrite this to be an integration test")]
-        public async Task DownloadReleasesFromFileDirectoryIntegrationTest()
+        public void DownloadReleasesFromFileDirectoryIntegrationTest()
         {
             Assert.False(true, "Rewrite this to not use the SampleUpdatingApp");
 

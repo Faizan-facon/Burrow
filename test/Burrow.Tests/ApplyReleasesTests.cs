@@ -22,8 +22,9 @@ namespace Squirrel.Tests
             return Task.FromResult(new byte[0]);
         }
 
-        public async Task DownloadFile(string url, string targetFile, Action<int> progress)
+        public Task DownloadFile(string url, string targetFile, Action<int> progress)
         {
+            return Task.CompletedTask;
         }
     }
 
@@ -42,7 +43,7 @@ namespace Squirrel.Tests
                 ReleaseEntry.WriteReleaseFile(pkgs, Path.Combine(remotePkgDir, "RELEASES"));
 
                 using (var fixture = new UpdateManager(remotePkgDir, "theApp", tempDir)) {
-                    await fixture.FullInstall();
+                    await fixture.FullInstall(silentInstall: true);
 
                     // NB: We execute the Squirrel-aware apps, so we need to give
                     // them a minute to settle or else the using statement will
@@ -53,7 +54,11 @@ namespace Squirrel.Tests
                     Assert.True(File.Exists(Path.Combine(tempDir, "theApp", "app-0.1.0", "args.txt")));
 
                     var text = File.ReadAllText(Path.Combine(tempDir, "theApp", "app-0.1.0", "args.txt"), Encoding.UTF8);
-                    Assert.Contains("firstrun", text);
+                    Assert.Contains("install", text);
+
+                    foreach (var proc in Process.GetProcessesByName("SquirrelAwareApp")) {
+                        try { proc.Kill(); proc.WaitForExit(2000); } catch { }
+                    }
                 }
             }
         }

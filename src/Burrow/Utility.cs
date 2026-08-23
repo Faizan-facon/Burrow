@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.Contracts;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -328,8 +329,7 @@ namespace Squirrel
             }
 
             var fileOperations = files.ForEachAsync(file => {
-                File.SetAttributes(file, FileAttributes.Normal);
-                File.Delete(file);
+                DeleteFileHarder(file, true);
             });
 
             var directoryOperations =
@@ -377,6 +377,27 @@ namespace Squirrel
         public static async Task ExtractZipToDirectory(string zipFilePath, string outFolder)
         {
             var sevenZip = find7Zip();
+            if (!File.Exists(sevenZip))
+            {
+                await Task.Run(() =>
+                {
+                    if (!Directory.Exists(outFolder)) Directory.CreateDirectory(outFolder);
+                    using (var za = ZipFile.OpenRead(zipFilePath))
+                    {
+                        foreach (var entry in za.Entries)
+                        {
+                            var fullPath = Path.Combine(outFolder, entry.FullName);
+                            var dir = Path.GetDirectoryName(fullPath);
+                            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                                Directory.CreateDirectory(dir);
+                            if (!string.IsNullOrEmpty(entry.Name))
+                                entry.ExtractToFile(fullPath, overwrite: true);
+                        }
+                    }
+                });
+                return;
+            }
+
             var result = default(Tuple<int, string>);
 
             try {
@@ -398,6 +419,24 @@ namespace Squirrel
         public static async Task CreateZipFromDirectory(string zipFilePath, string inFolder)
         {
             var sevenZip = find7Zip();
+            if (!File.Exists(sevenZip))
+            {
+                await Task.Run(() =>
+                {
+                    if (File.Exists(zipFilePath)) File.Delete(zipFilePath);
+                    using (var za = ZipFile.Open(zipFilePath, ZipArchiveMode.Create))
+                    {
+                        var di = new DirectoryInfo(inFolder);
+                        foreach (var file in di.EnumerateFiles("*", SearchOption.AllDirectories))
+                        {
+                            string relativePath = file.FullName.Substring(inFolder.Length).TrimStart('\\', '/').Replace('\\', '/');
+                            za.CreateEntryFromFile(file.FullName, relativePath, System.IO.Compression.CompressionLevel.Fastest);
+                        }
+                    }
+                });
+                return;
+            }
+
             var result = default(Tuple<int, string>);
 
             try {

@@ -18,14 +18,15 @@ rd /s /q ..\build ..\packages 2> nul
 
 :: Build
 
-nuget restore ..\Squirrel.sln || exit /b
+nuget restore ..\Burrow.sln || exit /b
 
-msbuild -Restore ..\Squirrel.sln -p:Configuration=Release -v:m -m -nr:false -bl:..\build\logs\build.binlog || exit /b
+msbuild -Restore ..\Burrow.sln -p:Configuration=Release -v:m -m -nr:false -bl:..\build\logs\build.binlog || exit /b
 
 
 :: Pack .nupkg
 
-nuget pack Squirrel.nuspec -OutputDirectory ..\build\artifacts || exit /b
+md ..\build\artifacts 2> nul
+nuget pack Burrow.nuspec -OutputDirectory ..\build\artifacts || exit /b
 
 
 :: Layout electron-winstaller
@@ -40,16 +41,16 @@ nuget pack Squirrel.nuspec -OutputDirectory ..\build\artifacts || exit /b
 
 md ..\build\artifacts\electron-winstaller\vendor
 
-copy ..\build\Release\net45\Update.exe ..\build\artifacts\electron-winstaller\vendor\Squirrel.exe || exit /b
-copy ..\build\Release\net45\update.com ..\build\artifacts\electron-winstaller\vendor\Squirrel.com || exit /b
-copy ..\build\Release\net45\Update.pdb ..\build\artifacts\electron-winstaller\vendor\Squirrel.pdb || exit /b
+copy ..\build\Release\net48\Update.exe ..\build\artifacts\electron-winstaller\vendor\Squirrel.exe || exit /b
+copy ..\build\Release\net48\update.com ..\build\artifacts\electron-winstaller\vendor\Squirrel.com || exit /b
+copy ..\build\Release\net48\Update.pdb ..\build\artifacts\electron-winstaller\vendor\Squirrel.pdb || exit /b
 copy ..\build\Release\Win32\Setup.exe ..\build\artifacts\electron-winstaller\vendor || exit /b
 copy ..\build\Release\Win32\Setup.pdb ..\build\artifacts\electron-winstaller\vendor || exit /b
-copy ..\build\Release\net45\Update-Mono.exe ..\build\artifacts\electron-winstaller\vendor\Squirrel-Mono.exe || exit /b
-copy ..\build\Release\net45\Update-Mono.pdb ..\build\artifacts\electron-winstaller\vendor\Squirrel-Mono.pdb || exit /b
+copy ..\build\Release\net48\Update-Mono.exe ..\build\artifacts\electron-winstaller\vendor\Squirrel-Mono.exe || exit /b
+copy ..\build\Release\net48\Update-Mono.pdb ..\build\artifacts\electron-winstaller\vendor\Squirrel-Mono.pdb || exit /b
 copy ..\build\Release\Win32\StubExecutable.exe ..\build\artifacts\electron-winstaller\vendor || exit /b
-copy ..\build\Release\net45\SyncReleases.exe ..\build\artifacts\electron-winstaller\vendor || exit /b
-copy ..\build\Release\net45\SyncReleases.pdb ..\build\artifacts\electron-winstaller\vendor || exit /b
+copy ..\build\Release\net48\SyncReleases.exe ..\build\artifacts\electron-winstaller\vendor || exit /b
+copy ..\build\Release\net48\SyncReleases.pdb ..\build\artifacts\electron-winstaller\vendor || exit /b
 copy ..\build\Release\Win32\WriteZipToSetup.exe ..\build\artifacts\electron-winstaller\vendor || exit /b
 copy ..\build\Release\Win32\WriteZipToSetup.pdb ..\build\artifacts\electron-winstaller\vendor || exit /b
 
@@ -69,7 +70,7 @@ if not exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
   exit /b 2
 )
 
-for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -version [16.0^,18.0^) -property installationPath`) do (
+for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -version [16.0^,20.0^) -property installationPath`) do (
   if exist "%%i\Common7\Tools\vsdevcmd.bat" (
     call "%%i\Common7\Tools\vsdevcmd.bat" -no_logo
     exit /b

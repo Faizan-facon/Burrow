@@ -110,6 +110,54 @@ namespace Squirrel.Tests
         }
 
         [Fact]
+        public async Task ForceUpdateRunsNonSquirrelAwareApps()
+        {
+            string installRoot;
+            string feedDirectory;
+
+            using (Utility.WithTempDirectory(out installRoot))
+            using (Utility.WithTempDirectory(out feedDirectory)) {
+                try {
+                    IntegrationTestHelper.CreateFakeInstalledApp("0.1.0", feedDirectory);
+                    var packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                    ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
+
+                    using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                        await fixture.FullInstall(silentInstall: true);
+                    }
+
+                    IntegrationTestHelper.CreateFakeInstalledApp("0.2.0", feedDirectory);
+                    packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                    packages.Single(x => x.Version.ToString() == "0.2.0").Options["forceUpdate"] = true;
+                    ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
+
+                    using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                        await fixture.UpdateApp();
+                    }
+
+                    var updatedAppDirectory = Path.Combine(installRoot, "theApp", "app-0.2.0");
+                    IntegrationTestHelper.WaitForFileContents(
+                        Path.Combine(updatedAppDirectory, "version.txt"), "0.2.0", TimeSpan.FromSeconds(10));
+                    IntegrationTestHelper.WaitForFileContents(
+                        Path.Combine(updatedAppDirectory, "args.txt"), "updated|0.2.0", TimeSpan.FromSeconds(10));
+                    IntegrationTestHelper.WaitForFileContents(
+                        Path.Combine(updatedAppDirectory, "args2.txt"), "updated|0.2.0", TimeSpan.FromSeconds(10));
+
+                    Assert.Contains("updated|0.2.0", File.ReadAllText(Path.Combine(updatedAppDirectory, "args.txt"), Encoding.UTF8));
+                    Assert.Contains("updated|0.2.0", File.ReadAllText(Path.Combine(updatedAppDirectory, "args2.txt"), Encoding.UTF8));
+                } finally {
+                    using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                        fixture.RemoveUninstallerRegistryEntry();
+                    }
+
+                    foreach (var proc in Process.GetProcessesByName("SquirrelAwareApp")) {
+                        try { proc.Kill(); proc.WaitForExit(2000); } catch { }
+                    }
+                }
+            }
+        }
+
+        [Fact]
         public async Task RunningUpgradeAppTwiceDoesntCrash()
         {
             string tempDir;

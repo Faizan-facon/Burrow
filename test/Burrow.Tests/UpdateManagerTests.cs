@@ -80,7 +80,9 @@ namespace Squirrel.Tests
                     var releasePath = Path.Combine(packageDir.FullName, "RELEASES");
                     File.Exists(releasePath).ShouldBeTrue();
 
-                    var entries = ReleaseEntry.ParseReleaseFile(File.ReadAllText(releasePath, Encoding.UTF8));
+                    var releaseContents = File.ReadAllText(releasePath, Encoding.UTF8).TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
+                    Assert.StartsWith("{", releaseContents);
+                    var entries = ReleaseEntry.ParseReleaseFile(releaseContents);
                     entries.Count().ShouldEqual(3);
                 }
             }

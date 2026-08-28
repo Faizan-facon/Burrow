@@ -30,6 +30,7 @@ namespace Squirrel
             public async Task<string> ApplyReleases(UpdateInfo updateInfo, bool silentInstall, bool attemptingFullInstall, Action<int> progress = null)
             {
                 progress = progress ?? (_ => { });
+                var forceUpdate = updateInfo.ReleasesToApply.Any(x => x.ForceUpdate);
 
                 progress(0);
 
@@ -64,7 +65,7 @@ namespace Squirrel
 
                 progress(90);
 
-                await this.ErrorIfThrows(() => invokePostInstall(newVersion, attemptingFullInstall, false, silentInstall),
+                await this.ErrorIfThrows(() => invokePostInstall(newVersion, attemptingFullInstall, false, silentInstall, forceUpdate),
                     "Failed to invoke post-install");
 
                 progress(95);
@@ -407,14 +408,20 @@ namespace Squirrel
                     File.Copy(newSquirrel, Path.Combine(targetDir.Parent.FullName, "Update.exe"), true));
             }
 
-            async Task invokePostInstall(SemanticVersion currentVersion, bool isInitialInstall, bool firstRunOnly, bool silentInstall)
+            async Task invokePostInstall(SemanticVersion currentVersion, bool isInitialInstall, bool firstRunOnly, bool silentInstall, bool forceUpdate = false)
             {
                 var targetDir = getDirectoryForRelease(currentVersion);
                 var args = isInitialInstall ?
                     String.Format("--squirrel-install {0}", currentVersion) :
                     String.Format("--squirrel-updated {0}", currentVersion);
 
-                var squirrelApps = SquirrelAwareExecutableDetector.GetAllSquirrelAwareApps(targetDir.FullName);
+                var squirrelApps = forceUpdate ?
+                    targetDir.EnumerateFiles("*.exe")
+                        .Where(x => !x.Name.StartsWith("squirrel.", StringComparison.OrdinalIgnoreCase))
+                        .Where(x => !x.Name.StartsWith("update.", StringComparison.OrdinalIgnoreCase))
+                        .Select(x => x.FullName)
+                        .ToList() :
+                    SquirrelAwareExecutableDetector.GetAllSquirrelAwareApps(targetDir.FullName);
 
                 this.Log().Info("Squirrel Enabled Apps: [{0}]", String.Join(",", squirrelApps));
 
@@ -433,7 +440,7 @@ namespace Squirrel
 
                 // If this is the first run, we run the apps with first-run and 
                 // *don't* wait for them, since they're probably the main EXE
-                if (squirrelApps.Count == 0) {
+                if (!forceUpdate && squirrelApps.Count == 0) {
                     this.Log().Warn("No apps are marked as Squirrel-aware! Going to run them all");
 
                     squirrelApps = targetDir.EnumerateFiles()

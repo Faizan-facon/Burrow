@@ -6,6 +6,11 @@ using Squirrel.Tests.TestHelpers;
 using Xunit;
 using NuGet;
 
+using System.Collections.Generic;
+using System.Runtime.Serialization;
+using System.Text;
+using Squirrel.Json;
+
 namespace Squirrel.Tests.Core
 {
     public class ReleaseEntryTests
@@ -377,6 +382,123 @@ namespace Squirrel.Tests.Core
         {
             Assert.True(ReleaseEntry.ParseReleaseFile("").Count() == 0);
             Assert.True(ReleaseEntry.ParseReleaseFile(null).Count() == 0);
+        }
+
+        [Fact]
+        public void JsonReleaseFileRoundTrip()
+        {
+            var entries = new[] {
+                ReleaseEntry.ParseReleaseEntry("0000000000000000000000000000000000000000  Demo-1.2.0-full.nupkg  200"),
+                ReleaseEntry.ParseReleaseEntry("0000000000000000000000000000000000000000  Demo-1.1.0-delta.nupkg  100"),
+                ReleaseEntry.ParseReleaseEntry("0000000000000000000000000000000000000000  Demo-1.1.0-full.nupkg  150"),
+            };
+            var path = Path.GetTempFileName();
+
+            try {
+                ReleaseEntry.WriteReleaseFile(entries, path);
+
+                var contents = File.ReadAllText(path, Encoding.UTF8).TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
+                Assert.StartsWith("{", contents);
+
+                var document = (IDictionary<string, object>)SimpleJson.DeserializeObject(contents);
+                Assert.Equal(1L, document["formatVersion"]);
+                var releases = (IList<object>)document["releases"];
+                Assert.Equal(3, releases.Count);
+
+                var first = (IDictionary<string, object>)releases[0];
+                var second = (IDictionary<string, object>)releases[1];
+                var third = (IDictionary<string, object>)releases[2];
+                Assert.Equal("Demo-1.1.0-delta.nupkg", first["filename"]);
+                Assert.Equal("Demo-1.1.0-full.nupkg", second["filename"]);
+                Assert.Equal("Demo-1.2.0-full.nupkg", third["filename"]);
+                Assert.Equal("0000000000000000000000000000000000000000", first["sha1"]);
+                Assert.Equal(100L, first["filesize"]);
+                Assert.False(first.ContainsKey("isDelta"));
+
+                var parsed = ReleaseEntry.ParseReleaseFile(contents).ToArray();
+                Assert.Equal(new[] { "Demo-1.1.0-delta.nupkg", "Demo-1.1.0-full.nupkg", "Demo-1.2.0-full.nupkg" }, parsed.Select(x => x.Filename).ToArray());
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void JsonReleaseEntryPreservesOptionsThroughRoundTrip()
+        {
+            var contents = @"{
+                ""formatVersion"": 1,
+                ""releases"": [{
+                    ""sha1"": ""0000000000000000000000000000000000000000"",
+                    ""filename"": ""Demo-1.2.0-full.nupkg"",
+                    ""filesize"": 200,
+                    ""baseUrl"": ""https://updates.example.test/releases/"",
+                    ""query"": ""?channel=beta"",
+                    ""stagingPercentage"": 0.25,
+                    ""options"": {
+                        ""forceUpdate"": true,
+                        ""unknown"": { ""nested"": [""value"", 2] }
+                    }
+                }]
+            }";
+
+            var entry = ReleaseEntry.ParseReleaseFile(contents).Single();
+            Assert.Equal("https://updates.example.test/releases/", entry.BaseUrl);
+            Assert.Equal("?channel=beta", entry.Query);
+            Assert.Equal(200L, entry.Filesize);
+            Assert.Equal(0.25f, entry.StagingPercentage.Value, 3);
+            Assert.True(entry.ForceUpdate);
+            var unknown = (IDictionary<string, object>)entry.Options["unknown"];
+            var unknownNested = (IList<object>)unknown["nested"];
+            Assert.Equal("value", unknownNested[0]);
+
+            var path = Path.GetTempFileName();
+            try {
+                ReleaseEntry.WriteReleaseFile(new[] { entry }, path);
+                var roundTripped = ReleaseEntry.ParseReleaseFile(File.ReadAllText(path, Encoding.UTF8)).Single();
+                Assert.Equal(entry.Filename, roundTripped.Filename);
+                Assert.Equal(entry.SHA1, roundTripped.SHA1);
+                Assert.Equal(entry.Filesize, roundTripped.Filesize);
+                Assert.Equal(entry.BaseUrl, roundTripped.BaseUrl);
+                Assert.Equal(entry.Query, roundTripped.Query);
+                Assert.Equal(entry.StagingPercentage, roundTripped.StagingPercentage);
+                Assert.True(roundTripped.ForceUpdate);
+                var roundTrippedUnknown = (IDictionary<string, object>)roundTripped.Options["unknown"];
+                var nested = (IList<object>)roundTrippedUnknown["nested"];
+                Assert.Equal("value", nested[0]);
+                Assert.Equal(2L, nested[1]);
+            } finally {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void LegacyReleaseFileStillParses()
+        {
+            var contents = "0000000000000000000000000000000000000000  Demo-1.0.0-full.nupkg  100\n" +
+                "0000000000000000000000000000000000000000  Demo-1.1.0-full.nupkg  100 # 10%\n";
+
+            Assert.Equal(2, ReleaseEntry.ParseReleaseFile(contents).Count());
+            Assert.Equal(1, ReleaseEntry.ParseReleaseFileAndApplyStaging(contents, default(Guid?)).Count());
+            Assert.Empty(ReleaseEntry.ParseReleaseFile(null));
+            Assert.Empty(ReleaseEntry.ParseReleaseFile(" \r\n\t"));
+        }
+
+        [Fact]
+        public void UnsupportedJsonReleaseFormatVersionThrowsSerializationException()
+        {
+            var ex = Assert.Throws<SerializationException>(() => ReleaseEntry.ParseReleaseFile("{\"formatVersion\":2,\"releases\":[]}"));
+            Assert.Equal("Unsupported RELEASES format version: 2.", ex.Message);
+        }
+
+        [Theory]
+        [InlineData("{}")]
+        [InlineData("{\"formatVersion\":1}")]
+        [InlineData("{\"formatVersion\":1,\"releases\":null}")]
+        [InlineData("{\"formatVersion\":1,\"releases\":[{\"sha1\":\"bad\",\"filename\":\"Demo-1.0.0-full.nupkg\",\"filesize\":1}]}")]
+        [InlineData("{\"formatVersion\":1,\"releases\":[{\"sha1\":\"0000000000000000000000000000000000000000\",\"filename\":\"Demo-1.0.0-full.nupkg\",\"filesize\":0}]}")]
+        public void InvalidJsonReleaseFilesThrowSerializationException(string contents)
+        {
+            Assert.Throws<SerializationException>(() => ReleaseEntry.ParseReleaseFile(contents));
         }
 
         static string MockReleaseEntry(string name, float? percentage = null)

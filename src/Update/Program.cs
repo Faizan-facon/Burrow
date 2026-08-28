@@ -1,4 +1,5 @@
-﻿using NuGet;
+﻿using Microsoft.Extensions.Logging;
+using NuGet;
 using Squirrel.SimpleSplat;
 using Squirrel.Json;
 using System;
@@ -13,7 +14,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-
 namespace Squirrel.Update
 {
     enum UpdateAction {
@@ -27,6 +27,19 @@ namespace Squirrel.Update
 
         public static int Main(string[] args)
         {
+            // Configure Microsoft.Extensions.Logging with Console, Debug, and File sinks
+            var loggerFactory = LoggerFactory.Create(builder =>
+            {
+                builder.AddConsole();
+                builder.AddDebug();
+                builder.AddFile(options =>
+                {
+                    options.FilePath = GetLogFilePath("Update");
+                });
+                builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Debug);
+            });
+            MicrosoftLogManager.ConfigureMicrosoftLogging(loggerFactory);
+
             var pg = new Program();
             try {
                 return pg.main(args);
@@ -38,15 +51,19 @@ namespace Squirrel.Update
             }
         }
 
+        static string GetLogFilePath(string commandSuffix)
+        {
+            var exePath = System.Reflection.Assembly.GetEntryAssembly()?.Location;
+            var dir = string.IsNullOrEmpty(exePath) ? Environment.CurrentDirectory : Path.GetDirectoryName(exePath);
+            return Path.Combine(dir, $"Squirrel-{commandSuffix}.log");
+        }
+
         int main(string[] args)
         {
             try {
                 opt = new StartupOption(args);
             } catch (Exception ex) {
-                using (var logger = new SetupLogLogger(true, "OptionParsing") { Level = LogLevel.Info }) {
-                    SquirrelLocator.CurrentMutable.Register(() => logger, typeof(Squirrel.SimpleSplat.ILogger));
-                    logger.Write($"Failed to parse command line options. {ex.Message}", LogLevel.Error);
-                }
+                this.Log().Error($"Failed to parse command line options. {ex.Message}");
                 throw;
             }
 
@@ -54,15 +71,11 @@ namespace Squirrel.Update
             // open will actually crash the uninstaller
             bool isUninstalling = opt.updateAction == UpdateAction.Uninstall;
 
-            using (var logger = new SetupLogLogger(isUninstalling, opt.updateAction.ToString()) {Level = LogLevel.Info}) {
-                SquirrelLocator.CurrentMutable.Register(() => logger, typeof (SimpleSplat.ILogger));
-
-                try {
-                    return executeCommandLine(args);
-                } catch (Exception ex) {
-                    logger.Write("Finished with unhandled exception: " + ex, LogLevel.Fatal);
-                    throw;
-                }
+            try {
+                return executeCommandLine(args);
+            } catch (Exception ex) {
+                this.Log().Fatal("Finished with unhandled exception: " + ex);
+                throw;
             }
         }
 
@@ -816,48 +829,4 @@ namespace Squirrel.Update
         }
     }
 
-    class SetupLogLogger : SimpleSplat.ILogger, IDisposable
-    {
-        TextWriter inner;
-        readonly object gate = 42;
-        public SimpleSplat.LogLevel Level { get; set; }
-
-        public SetupLogLogger(bool saveInTemp, string commandSuffix = null)
-        {
-            for (int i=0; i < 10; i++) {
-                try {
-                    var dir = saveInTemp ?
-                        Path.GetTempPath() :
-                        Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
-                    var fileName = commandSuffix == null ? String.Format($"Squirrel.{i}.log", i) : String.Format($"Squirrel-{commandSuffix}.{i}.log", i);
-                    var file = Path.Combine(dir, fileName.Replace(".0.log", ".log"));
-                    var str = File.Open(file, FileMode.Append, FileAccess.Write, FileShare.Read);
-                    inner = new StreamWriter(str, Encoding.UTF8, 4096, false) { AutoFlush = true };
-                    return;
-                } catch (Exception ex) {
-                    // Didn't work? Keep going
-                    Console.Error.WriteLine("Couldn't open log file, trying new file: " + ex.ToString());
-                }
-            }
-
-            inner = Console.Error;
-        }
-
-        public void Write(string message, LogLevel logLevel)
-        {
-            if (logLevel < Level) {
-                return;
-            }
-
-            lock (gate) inner.WriteLine($"[{DateTime.Now.ToString("dd/MM/yy HH:mm:ss")}] {logLevel.ToString().ToLower()}: {message}");
-        }
-
-        public void Dispose()
-        {
-            lock (gate) {
-                inner.Flush();
-                inner.Dispose();
-            }
-        }
-    }
 }

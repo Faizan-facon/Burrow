@@ -194,8 +194,8 @@ namespace Squirrel.SimpleSplat
 
         public static void InitializeSplat(this IMutableDependencyResolver This)
         {
-            This.Register(() => new DefaultLogManager(), typeof(ILogManager));
-            This.Register(() => new DebugLogger(), typeof(ILogger));
+            This.Register(() => (ILogManager)MicrosoftLogManager.Instance ?? new DefaultLogManager(), typeof(ILogManager));
+            This.Register(() => MicrosoftLogManager.CreateLogger() ?? new DebugLogger(), typeof(ILogger));
         }
     }
 

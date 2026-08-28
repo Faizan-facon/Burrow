@@ -5,8 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Globalization;
 using NuGet;
 using Squirrel.SimpleSplat;
+using Squirrel.Json;
 using System.Runtime.Serialization;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
@@ -38,8 +40,19 @@ namespace Squirrel
         [DataMember] public long Filesize { get; protected set; }
         [DataMember] public bool IsDelta { get; protected set; }
         [DataMember] public float? StagingPercentage { get; protected set; }
+        [DataMember] public IDictionary<string, object> Options { get; }
 
-        protected ReleaseEntry(string sha1, string filename, long filesize, bool isDelta, string baseUrl = null, string query = null, float? stagingPercentage = null)
+        [IgnoreDataMember]
+        public bool ForceUpdate
+        {
+            get
+            {
+                object value;
+                return Options.TryGetValue("forceUpdate", out value) && value is bool && (bool)value;
+            }
+        }
+
+        protected ReleaseEntry(string sha1, string filename, long filesize, bool isDelta, string baseUrl = null, string query = null, float? stagingPercentage = null, IDictionary<string, object> options = null)
         {
             Contract.Requires(sha1 != null && sha1.Length == 40);
             Contract.Requires(filename != null);
@@ -47,6 +60,7 @@ namespace Squirrel
             Contract.Requires(filesize > 0);
 
             SHA1 = sha1; BaseUrl = baseUrl;  Filename = filename; Query = query; Filesize = filesize; IsDelta = isDelta; StagingPercentage = stagingPercentage;
+            Options = options == null ? new Dictionary<string, object>(StringComparer.Ordinal) : copyOptions(options);
         }
 
         [IgnoreDataMember]
@@ -95,6 +109,7 @@ namespace Squirrel
         static readonly Regex entryRegex = new Regex(@"^([0-9a-fA-F]{40})\s+(\S+)\s+(\d+)[\r]*$");
         static readonly Regex commentRegex = new Regex(@"\s*#.*$");
         static readonly Regex stagingRegex = new Regex(@"#\s+(\d{1,3})%$");
+        static readonly Regex sha1Regex = new Regex(@"\A[0-9a-fA-F]{40}\z");
         public static ReleaseEntry ParseReleaseEntry(string entry)
         {
             Contract.Requires(entry != null);
@@ -157,8 +172,8 @@ namespace Squirrel
         public bool IsStagingMatch(Guid? userId)
         {
             // A "Staging match" is when a user falls into the affirmative
-            // bucket - i.e. if the staging is at 10%, this user is the one out
-            // of ten case.
+            // bucket - i.e. if the staging is at 10%, this user is the one
+            // out of ten case.
             if (!StagingPercentage.HasValue) return true;
             if (!userId.HasValue) return false;
 
@@ -175,31 +190,27 @@ namespace Squirrel
             }
 
             fileContents = Utility.RemoveByteOrderMarkerIfPresent(fileContents);
+            var trimmedContents = fileContents.Trim();
+            if (trimmedContents.Length == 0) {
+                return new ReleaseEntry[0];
+            }
 
-            var ret = fileContents.Split('\n')
+            if (trimmedContents[0] == '{') {
+                return parseJsonReleaseFile(trimmedContents);
+            }
+
+            return fileContents.Split('\n')
                 .Where(x => !String.IsNullOrWhiteSpace(x))
                 .Select(ParseReleaseEntry)
                 .Where(x => x != null)
                 .ToArray();
-
-            return ret.Any(x => x == null) ? null : ret;
         }
 
         public static IEnumerable<ReleaseEntry> ParseReleaseFileAndApplyStaging(string fileContents, Guid? userToken)
         {
-            if (String.IsNullOrEmpty(fileContents)) {
-                return new ReleaseEntry[0];
-            }
-
-            fileContents = Utility.RemoveByteOrderMarkerIfPresent(fileContents);
-
-            var ret = fileContents.Split('\n')
-                .Where(x => !String.IsNullOrWhiteSpace(x))
-                .Select(ParseReleaseEntry)
-                .Where(x => x != null && x.IsStagingMatch(userToken))
+            return ParseReleaseFile(fileContents)
+                .Where(x => x.IsStagingMatch(userToken))
                 .ToArray();
-
-            return ret.Any(x => x == null) ? null : ret;
         }
 
 
@@ -208,11 +219,19 @@ namespace Squirrel
             Contract.Requires(releaseEntries != null && releaseEntries.Any());
             Contract.Requires(stream != null);
 
+            var releases = releaseEntries
+                .OrderBy(x => x.Version)
+                .ThenByDescending(x => x.IsDelta)
+                .Select(toJsonReleaseEntry)
+                .ToList();
+
+            var document = new Dictionary<string, object>(StringComparer.Ordinal) {
+                { "formatVersion", 1 },
+                { "releases", releases },
+            };
+
             using (var sw = new StreamWriter(stream, Encoding.UTF8)) {
-                sw.Write(String.Join("\n", releaseEntries
-                    .OrderBy(x => x.Version)
-                    .ThenByDescending(x => x.IsDelta)
-                    .Select(x => x.EntryAsString)));
+                sw.Write(SimpleJson.SerializeObject(document));
             }
         }
 
@@ -299,5 +318,183 @@ namespace Squirrel
                 .Select(x => new ReleasePackage(Path.Combine(targetDir, x.Filename), true))
                 .FirstOrDefault();
         }
+
+        static IEnumerable<ReleaseEntry> parseJsonReleaseFile(string fileContents)
+        {
+            object parsed;
+            try {
+                parsed = SimpleJson.DeserializeObject(fileContents);
+            } catch (Exception) {
+                throw invalidJsonReleaseFile();
+            }
+
+            var document = parsed as IDictionary<string, object>;
+            if (document == null) throw invalidJsonReleaseFile();
+
+            object formatVersion;
+            if (!document.TryGetValue("formatVersion", out formatVersion) || !isJsonNumber(formatVersion)) {
+                throw invalidJsonReleaseFile();
+            }
+
+            if (!jsonNumberEquals(formatVersion, 1)) {
+                throw new SerializationException(String.Format(CultureInfo.InvariantCulture,
+                    "Unsupported RELEASES format version: {0}.", formatVersion));
+            }
+
+            object releaseValue;
+            if (!document.TryGetValue("releases", out releaseValue)) throw invalidJsonReleaseFile();
+            var releaseArray = releaseValue as IList<object>;
+            if (releaseArray == null) throw invalidJsonReleaseFile();
+
+            try {
+                return releaseArray
+                    .Cast<object>()
+                    .Select(x => parseJsonReleaseEntry(x as IDictionary<string, object>))
+                    .ToArray();
+            } catch (SerializationException) {
+                throw;
+            } catch (Exception) {
+                throw invalidJsonReleaseFile();
+            }
+        }
+
+        static ReleaseEntry parseJsonReleaseEntry(IDictionary<string, object> release)
+        {
+            if (release == null) throw invalidJsonReleaseFile();
+
+            object value;
+            string sha1;
+            if (!release.TryGetValue("sha1", out value) || !(value is string) || String.IsNullOrEmpty((string)value) || !sha1Regex.IsMatch((string)value)) {
+                throw invalidJsonReleaseFile();
+            }
+            sha1 = (string)value;
+
+            if (!release.TryGetValue("filename", out value) || !(value is string) || String.IsNullOrEmpty((string)value)) {
+                throw invalidJsonReleaseFile();
+            }
+            var filename = (string)value;
+            if (filename.IndexOfAny(Path.GetInvalidFileNameChars()) > -1 || filename.IndexOfAny(new[] { '/', '\\', ':' }) > -1) {
+                throw invalidJsonReleaseFile();
+            }
+
+            if (!release.TryGetValue("filesize", out value) || !(value is long) || (long)value <= 0) {
+                throw invalidJsonReleaseFile();
+            }
+            var filesize = (long)value;
+
+            string baseUrl = null;
+            if (release.TryGetValue("baseUrl", out value)) {
+                if (value != null && (!(value is string) || String.IsNullOrEmpty((string)value))) throw invalidJsonReleaseFile();
+                baseUrl = (string)value;
+            }
+
+            string query = null;
+            if (release.TryGetValue("query", out value)) {
+                if (value != null && !(value is string)) throw invalidJsonReleaseFile();
+                query = (string)value;
+            }
+
+            float? stagingPercentage = null;
+            if (release.TryGetValue("stagingPercentage", out value) && value != null) {
+                double staging;
+                if (!tryGetJsonNumber(value, out staging) || Double.IsNaN(staging) || Double.IsInfinity(staging) || staging < 0 || staging > 1) {
+                    throw invalidJsonReleaseFile();
+                }
+                stagingPercentage = (float)staging;
+            }
+
+            validateJsonUrls(filename, baseUrl, query);
+
+            IDictionary<string, object> options = null;
+            if (release.TryGetValue("options", out value)) {
+                options = value as IDictionary<string, object>;
+                if (options == null) throw invalidJsonReleaseFile();
+            }
+
+            return new ReleaseEntry(sha1, filename, filesize, filenameIsDeltaFile(filename), baseUrl, query, stagingPercentage, options);
+        }
+
+        static Dictionary<string, object> toJsonReleaseEntry(ReleaseEntry entry)
+        {
+            var ret = new Dictionary<string, object>(StringComparer.Ordinal) {
+                { "sha1", entry.SHA1 },
+                { "filename", entry.Filename },
+                { "filesize", entry.Filesize },
+            };
+
+            if (entry.BaseUrl != null) ret.Add("baseUrl", entry.BaseUrl);
+            if (entry.Query != null) ret.Add("query", entry.Query);
+            if (entry.StagingPercentage != null) ret.Add("stagingPercentage", entry.StagingPercentage.Value);
+            if (entry.Options.Count > 0) ret.Add("options", entry.Options);
+
+            return ret;
+        }
+
+        static void validateJsonUrls(string filename, string baseUrl, string query)
+        {
+            if (query != null && baseUrl == null) throw invalidJsonReleaseFile();
+
+            if (baseUrl != null) {
+                Uri baseUri;
+                if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out baseUri) || !Utility.IsHttpUrl(baseUrl) || String.IsNullOrEmpty(baseUri.Host) || String.IsNullOrEmpty(baseUri.AbsolutePath) || !baseUri.AbsolutePath.EndsWith("/", StringComparison.Ordinal) || !String.IsNullOrEmpty(baseUri.Query) || !String.IsNullOrEmpty(baseUri.Fragment)) {
+                    throw invalidJsonReleaseFile();
+                }
+            }
+
+            if (query != null) {
+                if (query.Length == 0 || query[0] != '?' || query.IndexOf('#') >= 0 || query.IndexOf('\r') >= 0 || query.IndexOf('\n') >= 0) throw invalidJsonReleaseFile();
+                Uri releaseUri;
+                if (!Uri.TryCreate(baseUrl + filename + query, UriKind.Absolute, out releaseUri) || !String.Equals(releaseUri.Query, query, StringComparison.Ordinal)) throw invalidJsonReleaseFile();
+            }
+        }
+
+        static bool isJsonNumber(object value)
+        {
+            return value is long || value is double;
+        }
+
+        static bool jsonNumberEquals(object value, long expected)
+        {
+            if (value is long) return (long)value == expected;
+            return value is double && !Double.IsNaN((double)value) && !Double.IsInfinity((double)value) && (double)value == expected;
+        }
+
+        static bool tryGetJsonNumber(object value, out double number)
+        {
+            if (value is long) {
+                number = (long)value;
+                return true;
+            }
+            if (value is double) {
+                number = (double)value;
+                return true;
+            }
+            number = 0;
+            return false;
+        }
+
+        static IDictionary<string, object> copyOptions(IDictionary<string, object> options)
+        {
+            var ret = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (var option in options) ret.Add(option.Key, cloneJsonValue(option.Value));
+            return ret;
+        }
+
+        static object cloneJsonValue(object value)
+        {
+            var objectValue = value as IDictionary<string, object>;
+            if (objectValue != null) return copyOptions(objectValue);
+
+            var arrayValue = value as IList<object>;
+            if (arrayValue != null) return arrayValue.Select(cloneJsonValue).ToList();
+
+            return value;
+        }
+
+        static SerializationException invalidJsonReleaseFile()
+        {
+            return new SerializationException("Invalid JSON RELEASES file.");
+        }
+
     }
 }

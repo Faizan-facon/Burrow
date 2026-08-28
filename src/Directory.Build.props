@@ -16,8 +16,8 @@
   </PropertyGroup>
 
   <ItemGroup Condition=" '$(MSBuildProjectExtension)'=='.csproj' ">
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta2-18618-05" PrivateAssets="All" />
-    <PackageReference Include="Nerdbank.GitVersioning" Version="3.4.240" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta2-18618-05" PrivateAssets="All" Condition="'$(DisableGitVersioning)' != 'true'" />
+    <PackageReference Include="Nerdbank.GitVersioning" Version="3.4.240" PrivateAssets="All" Condition="'$(DisableGitVersioning)' != 'true'" />
   </ItemGroup>
 
   <PropertyGroup Condition=" '$(MSBuildProjectExtension)'=='.vcxproj' ">

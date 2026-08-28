@@ -6,7 +6,7 @@ This guide walks you through upgrading an existing desktop application from **Sq
 
 ## 1. Overview & What's Changed
 
-**Burrow** is the modernized, high-performance evolution of Squirrel.Windows. It provides **100% drop-in backward compatibility** with existing Squirrel installations, APIs, and command-line tools while delivering major speed, memory, and architecture improvements:
+**Burrow** is the modernized, high-performance evolution of Squirrel.Windows. It provides broad compatibility with existing Squirrel APIs, installations, and command-line tools while delivering major speed, memory, and architecture improvements. Its `RELEASES` reader accepts both legacy text and versioned JSON formats; newly written JSON `RELEASES` files require Burrow-compatible clients.
 
 | Feature | Legacy Squirrel.Windows | Burrow |
 | :--- | :--- | :--- |
@@ -83,14 +83,14 @@ All standard CLI arguments (`--releasify`, `--releaseDir`, `--packagesDir`, `--b
 ## 3. Transitioning Existing Installed Clients
 
 ### Can users who installed with legacy Squirrel update to Burrow releases?
-**Yes.**
-- When you build a release with Burrow, it produces standard `RELEASES` files, full packages (`MyApp-1.1.0-full.nupkg`), and delta packages.
-- Legacy Squirrel installations will download the new full package or delta package and update seamlessly.
-- Upon applying the update, Burrow replaces the local `Update.exe` in the user's `app` folder with the modernized, high-performance engine.
+**Yes, but the `RELEASES` format must match the client.**
+- Burrow reads both legacy text `RELEASES` files and versioned JSON `RELEASES` files.
+- New Burrow writers produce the versioned JSON format while keeping the filename `RELEASES`.
+- Legacy Squirrel clients cannot parse a newly written JSON `RELEASES` file unchanged.
+- A feed shared with legacy Squirrel clients must continue publishing a legacy text `RELEASES` file, or those clients must migrate before switching the feed file to JSON.
 
 ### Can Burrow apply older legacy Squirrel delta patches?
 **Yes.** Burrow's `BinaryPatchUtility` includes automatic fallback support to decompress legacy `BSDIFF40` patches with Deflate, BZip2 (`SharpZipLib`), and modern Zstandard patches.
-
 ---
 
 ## 4. Performance & Memory Impact

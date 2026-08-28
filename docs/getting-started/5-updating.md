@@ -17,7 +17,7 @@ To release a new update, you must first build, pack, and releasify your updated 
    	**`Properties\AssemblyInfo.cs`**
    
    	~~~cs
-  	[assembly: AssemblyVersion("1.0.1")]	[assembly: AssemblyFileVersion("1.0.1")]
+  	[assembly: AssemblyVersion("1.0.1")]	[assembly: AssemblyFileVersion("1.0.1")]
    	~~~
 2. **Switch to Release** - switch your build configuration to `Release`.
 3. **Build MyApp** - build your application to ensure the latest changes are included in the package we will be creating.
@@ -46,7 +46,7 @@ PM> Squirrel --releasify MyApp.1.0.1.nupkg
 After packaging the new MyApp version 1.0.1, the `Releases` directory has been updated as follows: 
  
 * **Updated Setup Application** - the `Setup.exe` application has been updated to include the latest MyApp version 1.0.1 package.
-* **Updated Files** - the `RELEASES` file has been appended to include the newly created full and delta packages.
+* **Updated Files** - the JSON `RELEASES` file has been updated to include the newly created full and delta packages.
 
 ## Distributing the New Release
 
@@ -55,17 +55,30 @@ The `Releases` directory now includes the updated files to distribute to your us
 **`Releases` Directory**
 
 ![](images/1.5-releases-directory.png)
+The `RELEASES` file retains its filename but is now a versioned JSON document. It contains the package hash, filename, and size used by the update process, plus optional download and rollout metadata:
 
-The `RELEASES` file contains SHA1 hash, filename, and file size for each package. This information is utilized by the application update process. 
+```json
+{
+  "formatVersion": 1,
+  "releases": [
+    {
+      "sha1": "40-hex-characters",
+      "filename": "MyApp-1.0.1-full.nupkg",
+      "filesize": 600752,
+      "baseUrl": "https://updates.example.com/releases/",
+      "query": "?channel=stable",
+      "stagingPercentage": 0.25,
+      "options": {
+        "forceUpdate": true
+      }
+    }
+  ]
+}
+```
 
-**`RELEASES` File**
+`formatVersion` identifies the `RELEASES` schema and `releases` is the ordered array of package records. `sha1`, `filename`, and positive-integer `filesize` are required. `baseUrl`, `query`, and `stagingPercentage` are optional. Delta status is derived from the filename suffix, so `isDelta` is not stored. `options` belongs to one release record and may contain operational metadata.
 
-~~~
-E3F67244E4166A65310C816221A12685C83F8E6F MyApp-1.0.0-full.nupkg 600725
-0D777EA94C612E8BF1EA7379164CAEFBA6E24463 MyApp-1.0.1-delta.nupkg 6030
-85F4D657F8424DD437D1B33CC4511EA7AD86B1A7 MyApp-1.0.1-full.nupkg 600752
-~~~
-
+Set `"options": { "forceUpdate": true }` on a release when recovering an application whose executable is not Squirrel-aware. Burrow then sends the update event to top-level application executables while excluding `squirrel.*` and `update.*` infrastructure files. This is an operational recovery flag for post-install executable selection; it does not override version comparison, package download, extraction, self-update, or release verification. Mark each full or delta candidate that must receive this handling.
 
 ## Application Updating
 

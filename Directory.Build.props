@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <MicrosoftExtensionsLoggingVersion>7.0.0</MicrosoftExtensionsLoggingVersion>
+    <MicrosoftExtensionsLoggingConsoleVersion>7.0.0</MicrosoftExtensionsLoggingConsoleVersion>
+    <MicrosoftExtensionsLoggingDebugVersion>7.0.0</MicrosoftExtensionsLoggingDebugVersion>
+  </PropertyGroup>
+</Project>

@@ -181,7 +181,7 @@ namespace Squirrel.SimpleSplat
     public static class LogHost
     {
         static internal bool suppressLogging = false;
-        static readonly IFullLogger nullLogger = new WrappingFullLogger(new NullLogger(), typeof(string));
+        public static readonly IFullLogger nullLogger = new WrappingFullLogger(new NullLogger(), typeof(string));
 
         /// <summary>
         /// Use this logger inside miscellaneous static methods where creating

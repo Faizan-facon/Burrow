@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Microsoft.Win32;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -66,36 +67,45 @@ namespace Squirrel.Tests
         [Fact]
         public async Task UpgradeRunsSquirrelAwareAppsWithUpgradeFlag()
         {
-            string tempDir;
-            string remotePkgDir;
+            string installRoot;
+            string feedDirectory;
 
-            using (Utility.WithTempDirectory(out tempDir))
-            using (Utility.WithTempDirectory(out remotePkgDir)) {
-                IntegrationTestHelper.CreateFakeInstalledApp("0.1.0", remotePkgDir);
-                var pkgs = ReleaseEntry.BuildReleasesFile(remotePkgDir);
-                ReleaseEntry.WriteReleaseFile(pkgs, Path.Combine(remotePkgDir, "RELEASES"));
+            using (Utility.WithTempDirectory(out installRoot))
+            using (Utility.WithTempDirectory(out feedDirectory)) {
+                IntegrationTestHelper.CreateFakeInstalledApp("0.1.0", feedDirectory);
+                var packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
 
-                using (var fixture = new UpdateManager(remotePkgDir, "theApp", tempDir)) {
-                    await fixture.FullInstall();
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    await fixture.FullInstall(silentInstall: true);
                 }
 
-                await Task.Delay(1000);
+                var initialVersionFile = Path.Combine(installRoot, "theApp", "app-0.1.0", "version.txt");
+                IntegrationTestHelper.WaitForFileContents(initialVersionFile, "0.1.0", TimeSpan.FromSeconds(10));
 
-                IntegrationTestHelper.CreateFakeInstalledApp("0.2.0", remotePkgDir);
-                pkgs = ReleaseEntry.BuildReleasesFile(remotePkgDir);
-                ReleaseEntry.WriteReleaseFile(pkgs, Path.Combine(remotePkgDir, "RELEASES"));
+                IntegrationTestHelper.CreateFakeInstalledApp("0.2.0", feedDirectory);
+                packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
 
-                using (var fixture = new UpdateManager(remotePkgDir, "theApp", tempDir)) {
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
                     await fixture.UpdateApp();
                 }
 
-                await Task.Delay(1000);
+                var updatedAppDirectory = Path.Combine(installRoot, "theApp", "app-0.2.0");
+                IntegrationTestHelper.WaitForFileContents(
+                    Path.Combine(updatedAppDirectory, "version.txt"), "0.2.0", TimeSpan.FromSeconds(10));
+                IntegrationTestHelper.WaitForFileContents(
+                    Path.Combine(updatedAppDirectory, "args.txt"), "updated|0.2.0", TimeSpan.FromSeconds(10));
 
-                Assert.False(File.Exists(Path.Combine(tempDir, "theApp", "app-0.2.0", "args2.txt")));
-                Assert.True(File.Exists(Path.Combine(tempDir, "theApp", "app-0.2.0", "args.txt")));
+                Assert.False(File.Exists(Path.Combine(updatedAppDirectory, "args2.txt")));
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    fixture.RemoveUninstallerRegistryEntry();
+                }
 
-                var text = File.ReadAllText(Path.Combine(tempDir, "theApp", "app-0.2.0", "args.txt"), Encoding.UTF8);
-                Assert.Contains("updated|0.2.0", text);
+                using (var uninstallKey = Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Uninstall\theApp")) {
+                    Assert.Null(uninstallKey);
+                }
             }
         }
 

@@ -70,6 +70,75 @@ The `Squirrel --releasify` command completes the following:
 
 ![](images/1.2-releases-directory.png)
 
+## Testing your update logic with FakeUpdateManager
+
+Test update orchestration in your own application test project. Reference the `burrow.windows` package, inject `IUpdateManager` into the consumer's updater service, and use `Squirrel.Testing.FakeUpdateManager`; do not use repository test helpers or `SquirrelAwareApp.exe` for this unit test. Production and test code use the same interface:
+
+~~~cs
+using System;
+using System.Threading.Tasks;
+using NuGet;
+using Squirrel;
+using Squirrel.Testing;
+using Xunit;
+
+public sealed class AppUpdater
+{
+    readonly IUpdateManager manager;
+
+    public AppUpdater(IUpdateManager manager)
+    {
+        this.manager = manager;
+    }
+
+    public async Task<ReleaseEntry> UpdateAsync()
+    {
+        return await manager.UpdateApp();
+    }
+}
+
+var fake = new FakeUpdateManager("MyApp", initialVersion: new SemanticVersion("1.0.0"));
+fake.PublishRelease(new SemanticVersion("1.1.0"));
+
+var release = await new AppUpdater(fake).UpdateAsync();
+
+Assert.Equal("1.1.0", release.Version.ToString());
+Assert.Equal("1.1.0", fake.CurrentVersion.ToString());
+Assert.True(fake.IsUninstallerRegistered);
+Assert.Equal(FakeUpdateOperation.ApplyReleases, fake.Calls[2].Operation);
+~~~
+
+`FakeUpdateManager` keeps releases and installation state in memory. It never creates package files, writes the registry, starts child processes, or downloads from a feed. Assert the orchestration through `CurrentVersion`, `IsInstalled`, `IsUninstallerRegistered`, `Shortcuts`, and `Calls`.
+
+Test the consumer's error path with a persistent failure. `UpdateApp` retries once with delta updates disabled, so a persistent failure is delivered after both attempts:
+
+~~~cs
+var fake = new FakeUpdateManager("MyApp", initialVersion: new SemanticVersion("1.0.0"));
+fake.PublishRelease(new SemanticVersion("1.1.0"));
+fake.Fail(FakeUpdateOperation.DownloadReleases, new InvalidOperationException("offline"));
+
+try
+{
+    var error = await Assert.ThrowsAsync<InvalidOperationException>(
+        () => new AppUpdater(fake).UpdateAsync());
+    Assert.Equal("offline", error.Message);
+}
+finally
+{
+    fake.ClearFailure(FakeUpdateOperation.DownloadReleases);
+}
+~~~
+
+Use `FailNext` separately for a direct `IUpdateManager` method test when only one attempt should fail; the queued exception is consumed by the next invocation.
+
+## Testing a real packaged application update
+
+Keep one consumer-owned smoke test for packaging and process behavior. Create two of your own `MyApp` packages, `0.1.0` and `0.2.0`, and put a version-specific `lib\\net45\\version.txt` in each package. In the app startup code, register the update callback with `SquirrelAwareApp.HandleEvents(onAppUpdate: ...)` and write an `updated|<version>` marker from that callback. Generate `RELEASES` for the feed containing both packages.
+
+Run a real `UpdateManager` with a disposable `rootDirectory`, call `FullInstall(silentInstall: true)` for `0.1.0`, then call `UpdateApp()` after publishing `0.2.0`. Assert `app-0.1.0\\version.txt`, `app-0.2.0\\version.txt`, and the `updated|0.2.0` marker from the application process. Use temporary feed and install paths and clean up the disposable root directory.
+
+This smoke test is separate from the `FakeUpdateManager` unit test: the fake validates consumer orchestration and error handling, while the real manager validates package layout, `RELEASES`, extraction, process startup, and the Squirrel-aware application callback.
+
 ## See Also
 
 * [Visual Studio Build Packaging](../using/visual-studio-packaging.md) - integrating NuGet packaging into your visual studio build process to include packing and releasifying.

@@ -10,5 +10,6 @@
     <files>
         <file src="NotSquirrelAwareApp.exe" target="lib\net45\NotSquirrelAwareApp.exe" />
         <file src="SquirrelAwareApp.exe" target="lib\net45\SquirrelAwareApp.exe" />
+        <file src="version.txt" target="lib\net45\version.txt" />
     </files>
 </package>

@@ -52,6 +52,28 @@ namespace Squirrel.Tests.TestHelpers
                 throw new Exception("", ex);
             }
         }
+        public static void WaitForFileContents(string path, string expectedFragment, TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+
+            while (true) {
+                try {
+                    if (File.Exists(path) && File.ReadAllText(path, Encoding.UTF8).IndexOf(expectedFragment, StringComparison.Ordinal) >= 0) {
+                        return;
+                    }
+                } catch (IOException) {
+                    // The application may still be writing the marker.
+                } catch (UnauthorizedAccessException) {
+                    // The application may temporarily hold an exclusive lock.
+                }
+
+                if (DateTime.UtcNow >= deadline) {
+                    throw new TimeoutException(String.Format("Timed out waiting for file '{0}' to contain '{1}'.", path, expectedFragment));
+                }
+
+                Thread.Sleep(50);
+            }
+        }
 
         static object gate = 42;
         public static IDisposable WithFakeInstallDirectory(string packageFileName, out string path)
@@ -75,6 +97,7 @@ namespace Squirrel.Tests.TestHelpers
             using (var clearTemp = Utility.WithTempDirectory(out targetDir)) {
                 var nuspec = File.ReadAllText(IntegrationTestHelper.GetPath("fixtures", nuspecFile), Encoding.UTF8);
                 File.WriteAllText(Path.Combine(targetDir, nuspecFile), nuspec.Replace("0.1.0", version), Encoding.UTF8);
+                File.WriteAllText(Path.Combine(targetDir, "version.txt"), version, Encoding.UTF8);
 
                 File.Copy(
                     IntegrationTestHelper.GetPath("fixtures", "SquirrelAwareApp.exe"), 

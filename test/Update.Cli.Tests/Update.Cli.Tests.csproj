@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <Description>Update.Cli.Tests</Description>
+    <Title>Update.Cli.Tests</Title>
+    <IsPackable>false</IsPackable>
+    <IsTest>true</IsTest>
+    <LangVersion>9</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\src\Update\rcedit.exe" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Update\signtool.exe" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Update\update.com" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Update\Update.csproj" />
+    <ProjectReference Include="..\..\src\Burrow\Burrow.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="7.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="7.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="7.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.6.6" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.6" PrivateAssets="All" />
+    <PackageReference Include="Spectre.Console.Cli" Version="0.50.0" />
+    <PackageReference Include="Spectre.Console.Testing" Version="0.50.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.ComponentModel.Composition" />
+  </ItemGroup>
+</Project>

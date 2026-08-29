@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -95,28 +95,24 @@ namespace Squirrel.Tests.Core
             Assert.Equal(sha1FromExternalTool, sha1, StringComparer.OrdinalIgnoreCase);
         }
 
-        [Fact(Skip="This test takes forever")]
+        [Fact]
         public void CanDeleteDeepRecursiveDirectoryStructure()
         {
             string tempDir;
             using (Utility.WithTempDirectory(out tempDir)) {
-                for (var i = 0; i < 50; i++) {
-                    var directory = Path.Combine(tempDir, newId());
-                    CreateSampleDirectory(directory);
+                var current = tempDir;
+                for (var depth = 0; depth < 5; depth++) {
+                    current = Path.Combine(current, $"level_{depth}");
+                    Directory.CreateDirectory(current);
+                    for (var f = 0; f < 5; f++) {
+                        File.WriteAllText(Path.Combine(current, $"file_{f}.txt"), "sample test content");
+                    }
                 }
 
                 var files = Directory.GetFiles(tempDir, "*", SearchOption.AllDirectories);
+                Assert.True(files.Length >= 25);
 
-                var count = files.Count();
-
-                this.Log().Info("Created {0} files under directory {1}", count, tempDir);
-
-                var sw = new Stopwatch();
-                sw.Start();
                 Utility.DeleteDirectory(tempDir).Wait();
-                sw.Stop();
-                this.Log().Info("Delete took {0}ms", sw.ElapsedMilliseconds);
-
                 Assert.False(Directory.Exists(tempDir));
             }
         }

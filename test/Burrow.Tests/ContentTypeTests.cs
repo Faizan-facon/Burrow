@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -12,7 +12,7 @@ namespace Squirrel.Tests.Core
 {
     public class ContentTypeTests
     {
-        [Theory(Skip = "This test is currently failing in CI")]
+        [Theory]
         [InlineData("basic.xml", "basic-merged.xml")]
         [InlineData("complex.xml", "complex-merged.xml")]
         public void MergeContentTypes(string inputFileName, string expectedFileName)
@@ -42,10 +42,13 @@ namespace Squirrel.Tests.Core
             }
         }
 
-        static IEnumerable<XmlElement> GetContentTypes(XmlNode doc)
+        static IEnumerable<string> GetContentTypes(XmlNode doc)
         {
-            var expectedTypesElement = doc.FirstChild.NextSibling;
-            return expectedTypesElement.ChildNodes.OfType<XmlElement>();
+            var typesElement = (doc is XmlDocument d ? d.DocumentElement : doc) ?? doc.FirstChild.NextSibling;
+            return typesElement.ChildNodes.OfType<XmlElement>()
+                .Select(x => $"{x.Name}:{x.GetAttribute("Extension")}:{x.GetAttribute("PartName")}:{x.GetAttribute("ContentType")}")
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
     }
 }

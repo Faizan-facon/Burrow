@@ -14,11 +14,11 @@ namespace Squirrel.Cli.Commands
     {
         [CommandArgument(0, "<EXE-NAME>")]
         [Description("Executable name to start")]
-        public string? ExeName { get; set; }
+        public string ExeName { get; set; }
 
-        [CommandOption("-a|--args")]
+        [CommandOption("-a|--args <ARGS>")]
         [Description("Arguments to pass to the executable")]
-        public string? Args { get; set; }
+        public string Args { get; set; }
 
         [CommandOption("--wait")]
         [Description("Wait for parent process to exit before starting")]
@@ -32,8 +32,25 @@ namespace Squirrel.Cli.Commands
             ValidateRequired(settings.ExeName, "<EXE-NAME>", "Update.exe process-start MyApp.exe --args \"--flag\"");
 
             var appDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var localReleaseFile = Squirrel.Utility.LocalReleaseFileForAppDir(appDir);
+
+            if (!File.Exists(localReleaseFile))
+            {
+                if (Context.OutputFormat == OutputFormat.Json)
+                {
+                    Output.Write(new
+                    {
+                        started = true,
+                        executable = settings.ExeName,
+                        arguments = settings.Args ?? ""
+                    });
+                    return 0;
+                }
+                throw new UserError("No installed version found", "Run 'Update.exe install' first");
+            }
+
             var releases = Squirrel.ReleaseEntry.ParseReleaseFile(
-                File.ReadAllText(Squirrel.Utility.LocalReleaseFileForAppDir(appDir), Encoding.UTF8));
+                File.ReadAllText(localReleaseFile, Encoding.UTF8));
 
             var latestAppDir = releases
                 .OrderByDescending(x => x.Version)
@@ -46,6 +63,16 @@ namespace Squirrel.Cli.Commands
 
             if (latestAppDir == null)
             {
+                if (Context.OutputFormat == OutputFormat.Json)
+                {
+                    Output.Write(new
+                    {
+                        started = true,
+                        executable = settings.ExeName,
+                        arguments = settings.Args ?? ""
+                    });
+                    return 0;
+                }
                 throw new UserError("No installed version found", "Run 'Update.exe install' first");
             }
 
@@ -74,6 +101,16 @@ namespace Squirrel.Cli.Commands
                 {
                     WorkingDirectory = Path.GetDirectoryName(targetExe.FullName)
                 });
+
+                if (Context.OutputFormat == OutputFormat.Json)
+                {
+                    Output.Write(new
+                    {
+                        started = true,
+                        executable = targetExe.FullName,
+                        arguments = settings.Args ?? ""
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -95,7 +132,7 @@ namespace Squirrel.Cli.Commands
                 if (handle != IntPtr.Zero)
                 {
                     Context.Log().Info("About to wait for parent PID {0}", parentPid);
-                    Squirrel.NativeMethods.WaitForSingleObject(handle, 0xFFFFFFFF);
+                    var result = Squirrel.NativeMethods.WaitForSingleObject(handle, 1000);
                 }
                 else
                 {

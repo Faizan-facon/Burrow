@@ -3,6 +3,20 @@ using System;
 
 namespace Squirrel.Update
 {
+    internal enum UpdateAction
+    {
+        Install,
+        Uninstall,
+        Download,
+        CheckForUpdate,
+        Update,
+        Releasify,
+        Shortcut,
+        Deshortcut,
+        UpdateSelf,
+        ProcessStart
+    }
+
     internal class StartupOption
     {
         private readonly OptionSet optionSet;

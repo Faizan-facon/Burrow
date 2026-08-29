@@ -10,19 +10,19 @@ namespace Squirrel.Cli.Commands
     {
         [CommandArgument(0, "<EXE-NAME>")]
         [Description("Executable name to create shortcut for")]
-        public string? ExeName { get; set; }
+        public string ExeName { get; set; }
 
-        [CommandOption("-l|--shortcut-locations")]
+        [CommandOption("-l|--shortcut-locations <LOCATIONS>")]
         [Description("Comma-separated string of shortcut locations (e.g. 'Desktop,StartMenu')")]
-        public string? ShortcutLocations { get; set; }
+        public string ShortcutLocations { get; set; }
 
-        [CommandOption("-a|--process-start-args")]
+        [CommandOption("-a|--process-start-args <ARGS>")]
         [Description("Arguments to use when starting executable")]
-        public string? ProcessStartArgs { get; set; }
+        public string ProcessStartArgs { get; set; }
 
-        [CommandOption("--icon")]
+        [CommandOption("--icon <ICO>")]
         [Description("Path to an ICO file for the shortcut")]
-        public string? Icon { get; set; }
+        public string Icon { get; set; }
 
         [CommandOption("--update-only")]
         [Description("Update shortcuts that already exist, rather than creating new ones")]
@@ -44,17 +44,29 @@ namespace Squirrel.Cli.Commands
                 mgr.CreateShortcutsForExecutable(settings.ExeName!, locations ?? defaultLocations, settings.UpdateOnly, settings.ProcessStartArgs, settings.Icon);
             }
 
-            Context.WriteSuccess($"Shortcut created for {settings.ExeName}");
+            if (Context.OutputFormat == OutputFormat.Json)
+            {
+                Output.Write(new
+                {
+                    success = true,
+                    exeName = settings.ExeName,
+                    action = "created"
+                });
+            }
+            else
+            {
+                Context.WriteSuccess($"Shortcut created for {settings.ExeName}");
+            }
             return 0;
         }
 
-        private string GetAppNameFromDirectory(string? path = null)
+        private string GetAppNameFromDirectory(string path = null)
         {
             path = path ?? Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             return new DirectoryInfo(path).Name;
         }
 
-        private Squirrel.ShortcutLocation? ParseShortcutLocations(string? shortcutArgs)
+        private Squirrel.ShortcutLocation? ParseShortcutLocations(string shortcutArgs)
         {
             if (String.IsNullOrWhiteSpace(shortcutArgs)) return null;
 
@@ -82,11 +94,11 @@ namespace Squirrel.Cli.Commands
     {
         [CommandArgument(0, "<EXE-NAME>")]
         [Description("Executable name to remove shortcut for")]
-        public string? ExeName { get; set; }
+        public string ExeName { get; set; }
 
-        [CommandOption("-l|--shortcut-locations")]
+        [CommandOption("-l|--shortcut-locations <LOCATIONS>")]
         [Description("Comma-separated string of shortcut locations (e.g. 'Desktop,StartMenu')")]
-        public string? ShortcutLocations { get; set; }
+        public string ShortcutLocations { get; set; }
     }
 
     public sealed class RemoveShortcutCommand : CommandBase<RemoveShortcutSettings>
@@ -104,17 +116,29 @@ namespace Squirrel.Cli.Commands
                 mgr.RemoveShortcutsForExecutable(settings.ExeName!, locations ?? defaultLocations);
             }
 
-            Context.WriteSuccess($"Shortcut removed for {settings.ExeName}");
+            if (Context.OutputFormat == OutputFormat.Json)
+            {
+                Output.Write(new
+                {
+                    success = true,
+                    exeName = settings.ExeName,
+                    action = "removed"
+                });
+            }
+            else
+            {
+                Context.WriteSuccess($"Shortcut removed for {settings.ExeName}");
+            }
             return 0;
         }
 
-        private string GetAppNameFromDirectory(string? path = null)
+        private string GetAppNameFromDirectory(string path = null)
         {
             path = path ?? Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             return new DirectoryInfo(path).Name;
         }
 
-        private Squirrel.ShortcutLocation? ParseShortcutLocations(string? shortcutArgs)
+        private Squirrel.ShortcutLocation? ParseShortcutLocations(string shortcutArgs)
         {
             if (String.IsNullOrWhiteSpace(shortcutArgs)) return null;
 

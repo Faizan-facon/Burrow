@@ -15,7 +15,7 @@ namespace Squirrel.Cli
                 });
         }
 
-        public static string PromptText(IAnsiConsole console, string message, string? defaultValue = null, bool allowEmpty = false)
+        public static string PromptText(IAnsiConsole console, string message, string defaultValue = null, bool allowEmpty = false)
         {
             var prompt = new Spectre.Console.TextPrompt<string>(message)
             {

@@ -9,9 +9,9 @@ namespace Squirrel.Cli.Commands
 {
     public class UninstallSettings : GlobalSettings
     {
-        [CommandOption("--app-name")]
+        [CommandOption("--app-name <NAME>")]
         [Description("Application name (defaults to directory name)")]
-        public string? AppName { get; set; }
+        public string AppName { get; set; }
     }
 
     public sealed class UninstallCommand : CommandBase<UninstallSettings>
@@ -39,7 +39,7 @@ namespace Squirrel.Cli.Commands
             return 0;
         }
 
-        private string GetAppNameFromDirectory(string? path = null)
+        private string GetAppNameFromDirectory(string path = null)
         {
             path = path ?? Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             return new DirectoryInfo(path).Name;

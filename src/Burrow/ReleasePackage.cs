@@ -207,7 +207,7 @@ namespace Squirrel
                         var percentage = (currentItem * 100d) / Math.Max(1, totalItems);
                         progress((int)percentage);
 
-                        var parts = entry.FullName.Split('\\', '/');
+                        var parts = entry.FullName.Split('\\', '/').Select(x => Uri.UnescapeDataString(x));
                         var decoded = String.Join(Path.DirectorySeparatorChar.ToString(), parts);
 
                         if (!re.IsMatch(decoded)) continue;

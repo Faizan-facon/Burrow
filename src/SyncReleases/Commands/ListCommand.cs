@@ -10,11 +10,11 @@ namespace Squirrel.Cli.Commands
 {
     public class ListSettings : GlobalSettings
     {
-        [CommandOption("-r|--release-dir")]
+        [CommandOption("-r|--release-dir <DIR>")]
         [Description("Path to a release directory to list")]
-        public string? ReleaseDir { get; set; }
+        public string ReleaseDir { get; set; }
 
-        [CommandOption("--show-deltas")]
+        [CommandOption("--show-deltas <VALUE>")]
         [Description("Include delta packages in output")]
         public bool ShowDeltas { get; set; } = true;
     }
@@ -23,7 +23,7 @@ namespace Squirrel.Cli.Commands
     {
         protected override int ExecuteCommand(ListSettings settings)
         {
-            var releaseDir = settings.ReleaseDir ?? Path.Combine(".", "Releases");
+            var releaseDir = settings.ReleaseDir ?? (Directory.Exists(Path.Combine(".", "Releases")) ? Path.Combine(".", "Releases") : ".");
 
             if (!Directory.Exists(releaseDir))
             {

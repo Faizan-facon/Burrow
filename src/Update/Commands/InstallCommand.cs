@@ -11,31 +11,38 @@ namespace Squirrel.Cli.Commands
 {
     public class InstallSettings : GlobalSettings
     {
-        [CommandArgument(0, "<PATH>")]
+        [CommandArgument(0, "[PATH]")]
         [Description("Path to the package directory")]
-        public string? Path { get; set; }
+        public string PathArg { get; set; }
+
+        [CommandOption("-p|--path <PATH>")]
+        [Description("Path to the package directory")]
+        public string Path { get; set; }
 
         [CommandOption("-s|--silent")]
         [Description("Silent install")]
         public bool Silent { get; set; }
 
-        [CommandOption("--app-name")]
+        [CommandOption("--app-name <NAME>")]
         [Description("Application name (defaults to directory name)")]
-        public string? AppName { get; set; }
+        public string AppName { get; set; }
+
+        public string GetEffectivePath() => Path ?? PathArg;
     }
 
     public sealed class InstallCommand : CommandBase<InstallSettings>
     {
         protected override int ExecuteCommand(InstallSettings settings)
         {
-            ValidateRequired(settings.Path, "--path", "Update.exe install --path ./packages");
+            var path = settings.GetEffectivePath();
+            ValidateRequired(path, "--path", "Update.exe install --path ./packages");
 
-            if (!Directory.Exists(settings.Path))
+            if (!Directory.Exists(path))
             {
-                throw new ValidationError($"Package directory not found: {settings.Path}", "--path");
+                throw new ValidationError($"Directory not found: {path}", "--path");
             }
 
-            var sourceDirectory = Path.GetFullPath(settings.Path);
+            var sourceDirectory = Path.GetFullPath(path);
             var releasesPath = Path.Combine(sourceDirectory, "RELEASES");
 
             Context.Log().Info("Starting install, writing to {0}", sourceDirectory);
@@ -80,7 +87,22 @@ namespace Squirrel.Cli.Commands
 
                 mgr.CreateUninstallerRegistryEntry();
 
-                Context.WriteSuccess($"Application installed to {mgr.RootAppDirectory}");
+                var installResult = new[]
+                {
+                    new
+                    {
+                        App = ourAppName,
+                        Path = mgr.RootAppDirectory,
+                        Status = "Installed"
+                    }
+                };
+
+                Output.Write(installResult);
+
+                if (Context.OutputFormat != OutputFormat.Json && Context.OutputFormat != OutputFormat.Table)
+                {
+                    Context.WriteSuccess($"Application installed to {mgr.RootAppDirectory}");
+                }
             }
 
             return 0;

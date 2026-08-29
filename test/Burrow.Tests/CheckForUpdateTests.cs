@@ -2,126 +2,194 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
+using Squirrel.SimpleSplat;
 using Squirrel.Tests.TestHelpers;
 using Xunit;
 
 namespace Squirrel.Tests
 {
-    public class CheckForUpdateTests
+    public class CheckForUpdateTests : IEnableLogger
     {
-        [Fact(Skip = "Rewrite this to be an integration test")]
-        public void NewReleasesShouldBeDetected()
+        [Fact]
+        public async Task NewReleasesShouldBeDetected()
         {
-            Assert.False(true, "Rewrite this to be an integration test");
-            /*
-            string localReleasesFile = Path.Combine(".", "theApp", "packages", "RELEASES");
+            string installRoot;
+            string feedDirectory;
 
-            var fileInfo = new Mock<FileInfoBase>();
-            fileInfo.Setup(x => x.OpenRead())
-                .Returns(File.OpenRead(IntegrationTestHelper.GetPath("fixtures", "RELEASES-OnePointOh")));
+            using (Utility.WithTempDirectory(out installRoot))
+            using (Utility.WithTempDirectory(out feedDirectory)) {
+                // Create initial version (1.0.0)
+                IntegrationTestHelper.CreateFakeInstalledApp("1.0.0", feedDirectory);
+                var packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
 
-            var fs = new Mock<IFileSystemFactory>();
-            fs.Setup(x => x.GetFileInfo(localReleasesFile)).Returns(fileInfo.Object);
+                // Install the initial version
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    await fixture.FullInstall(silentInstall: true);
+                }
 
-            var urlDownloader = new Mock<IUrlDownloader>();
-            var dlPath = IntegrationTestHelper.GetPath("fixtures", "RELEASES-OnePointOne");
-            urlDownloader.Setup(x => x.DownloadUrl(It.IsAny<string>(), It.IsAny<IObserver<int>>()))
-                .Returns(Observable.Return(File.ReadAllText(dlPath, Encoding.UTF8)));
+                // Create new version (1.1.0)
+                IntegrationTestHelper.CreateFakeInstalledApp("1.1.0", feedDirectory);
+                packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
 
-            var fixture = new UpdateManager("http://lol", "theApp", ".", fs.Object, urlDownloader.Object);
-            var result = default(UpdateInfo);
+                // Check for update
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    var result = await fixture.CheckForUpdate();
 
-            using (fixture) {
-                result = fixture.CheckForUpdate().First();
+                    Assert.NotNull(result);
+                    Assert.NotNull(result.FutureReleaseEntry);
+                    Assert.Equal("1.1.0", result.FutureReleaseEntry.Version.ToString());
+                    Assert.Single(result.ReleasesToApply);
+                    Assert.Equal("1.1.0", result.ReleasesToApply.Single().Version.ToString());
+                }
             }
-
-            Assert.NotNull(result);
-            Assert.Equal(1, result.ReleasesToApply.Single().Version.Major);
-            Assert.Equal(1, result.ReleasesToApply.Single().Version.Minor);
-            */
         }
 
-        [Fact(Skip = "Rewrite this to be an integration test")]
-        public void CorruptedReleaseFileMeansWeStartFromScratch()
+        [Fact]
+        public async Task CorruptedReleaseFileMeansWeStartFromScratch()
         {
-            Assert.False(true, "Rewrite this to be an integration test");
+            string installRoot;
+            string feedDirectory;
 
-            /*
-            string localPackagesDir = Path.Combine(".", "theApp", "packages");
-            string localReleasesFile = Path.Combine(localPackagesDir, "RELEASES");
+            using (Utility.WithTempDirectory(out installRoot))
+            using (Utility.WithTempDirectory(out feedDirectory)) {
+                // Create initial version (1.0.0)
+                IntegrationTestHelper.CreateFakeInstalledApp("1.0.0", feedDirectory);
+                var packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
 
-            var fileInfo = new Mock<FileInfoBase>();
-            fileInfo.Setup(x => x.Exists).Returns(true);
-            fileInfo.Setup(x => x.OpenRead())
-                .Returns(new MemoryStream(Encoding.UTF8.GetBytes("lol this isn't right")));
+                // Install the initial version
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    await fixture.FullInstall(silentInstall: true);
+                }
 
-            var dirInfo = new Mock<DirectoryInfoBase>();
-            dirInfo.Setup(x => x.Exists).Returns(true);
+                // Create new version (1.1.0)
+                IntegrationTestHelper.CreateFakeInstalledApp("1.1.0", feedDirectory);
+                packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
 
-            var fs = new Mock<IFileSystemFactory>();
-            fs.Setup(x => x.GetFileInfo(localReleasesFile)).Returns(fileInfo.Object);
-            fs.Setup(x => x.CreateDirectoryRecursive(localPackagesDir)).Verifiable();
-            fs.Setup(x => x.DeleteDirectoryRecursive(localPackagesDir)).Verifiable();
-            fs.Setup(x => x.GetDirectoryInfo(localPackagesDir)).Returns(dirInfo.Object);
+                // Corrupt the local RELEASES file
+                var localReleasesFile = Utility.LocalReleaseFileForAppDir(Path.Combine(installRoot, "theApp"));
+                File.WriteAllText(localReleasesFile, "lol this isn't right");
 
-            var urlDownloader = new Mock<IUrlDownloader>();
-            var dlPath = IntegrationTestHelper.GetPath("fixtures", "RELEASES-OnePointOne");
-            urlDownloader.Setup(x => x.DownloadUrl(It.IsAny<string>(), It.IsAny<IObserver<int>>()))
-                .Returns(Observable.Return(File.ReadAllText(dlPath, Encoding.UTF8)));
+                // Check for update - should recover and detect the new version
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    var result = await fixture.CheckForUpdate();
 
-            var fixture = new UpdateManager("http://lol", "theApp", ".", fs.Object, urlDownloader.Object);
-            using (fixture) {
-                fixture.CheckForUpdate().First();
+                    Assert.NotNull(result);
+                    Assert.NotNull(result.FutureReleaseEntry);
+                    Assert.Equal("1.1.0", result.FutureReleaseEntry.Version.ToString());
+                    Assert.Single(result.ReleasesToApply);
+                    Assert.Equal("1.1.0", result.ReleasesToApply.Single().Version.ToString());
+                }
             }
-
-            fs.Verify(x => x.CreateDirectoryRecursive(localPackagesDir), Times.Once());
-            fs.Verify(x => x.DeleteDirectoryRecursive(localPackagesDir), Times.Once());
-            */
         }
 
-        [Fact(Skip = "Rewrite this to be an integration test")]
-        public void CorruptRemoteFileShouldThrowOnCheck()
+        [Fact]
+        public async Task CorruptRemoteFileShouldThrowOnCheck()
         {
-            Assert.False(true, "Rewrite this to be an integration test");
+            string installRoot;
+            string feedDirectory;
 
-            /*
-            string localPackagesDir = Path.Combine(".", "theApp", "packages");
-            string localReleasesFile = Path.Combine(localPackagesDir, "RELEASES");
+            using (Utility.WithTempDirectory(out installRoot))
+            using (Utility.WithTempDirectory(out feedDirectory)) {
+                // Create initial version (1.0.0)
+                IntegrationTestHelper.CreateFakeInstalledApp("1.0.0", feedDirectory);
+                var packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
 
-            var fileInfo = new Mock<FileInfoBase>();
-            fileInfo.Setup(x => x.Exists).Returns(false);
+                // Install the initial version
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    await fixture.FullInstall(silentInstall: true);
+                }
 
-            var dirInfo = new Mock<DirectoryInfoBase>();
-            dirInfo.Setup(x => x.Exists).Returns(true);
+                // Corrupt the remote RELEASES file
+                File.WriteAllText(Path.Combine(feedDirectory, "RELEASES"), "lol this isn't right");
 
-            var fs = new Mock<IFileSystemFactory>();
-            fs.Setup(x => x.GetFileInfo(localReleasesFile)).Returns(fileInfo.Object);
-            fs.Setup(x => x.CreateDirectoryRecursive(localPackagesDir)).Verifiable();
-            fs.Setup(x => x.DeleteDirectoryRecursive(localPackagesDir)).Verifiable();
-            fs.Setup(x => x.GetDirectoryInfo(localPackagesDir)).Returns(dirInfo.Object);
-
-            var urlDownloader = new Mock<IUrlDownloader>();
-            urlDownloader.Setup(x => x.DownloadUrl(It.IsAny<string>(), It.IsAny<IObserver<int>>()))
-                .Returns(Observable.Return("lol this isn't right"));
-
-            var fixture = new UpdateManager("http://lol", "theApp", ".", fs.Object, urlDownloader.Object);
-
-            using (fixture) {
-                Assert.Throws<Exception>(() => fixture.CheckForUpdate().First());   
+                // Check for update - should throw
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    var ex = await Assert.ThrowsAsync<Exception>(() => fixture.CheckForUpdate());
+                    Assert.Contains("Invalid release entry", ex.Message);
+                }
             }
-            */
         }
 
-        [Fact(Skip = "TODO")]
-        public void IfLocalVersionGreaterThanRemoteWeRollback()
+        [Fact]
+        public async Task IfLocalVersionGreaterThanRemoteWeRollback()
         {
-            throw new NotImplementedException();
+            string installRoot;
+            string feedDirectory;
+
+            using (Utility.WithTempDirectory(out installRoot))
+            using (Utility.WithTempDirectory(out feedDirectory)) {
+                // Create version 1.1.0 locally
+                IntegrationTestHelper.CreateFakeInstalledApp("1.1.0", feedDirectory);
+                var packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
+
+                // Install version 1.1.0
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    await fixture.FullInstall(silentInstall: true);
+                }
+
+                // Now create only version 1.0.0 on the remote (simulating rollback scenario)
+                // We need to reset the feed directory to only have 1.0.0
+                var feedDirInfo = new DirectoryInfo(feedDirectory);
+                foreach (var file in feedDirInfo.GetFiles()) {
+                    file.Delete();
+                }
+
+                IntegrationTestHelper.CreateFakeInstalledApp("1.0.0", feedDirectory);
+                packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
+
+                // Check for update - local (1.1.0) > remote (1.0.0)
+                // In this case, the behavior is to return current local version as no update needed
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    var result = await fixture.CheckForUpdate();
+
+                    Assert.NotNull(result);
+                    // When local > remote, the current local version should be returned as FutureReleaseEntry
+                    // and ReleasesToApply should be empty (no update needed - we're already ahead)
+                    Assert.NotNull(result.CurrentlyInstalledVersion);
+                    Assert.Equal("1.1.0", result.CurrentlyInstalledVersion.Version.ToString());
+                    Assert.Equal("1.1.0", result.FutureReleaseEntry.Version.ToString());
+                    Assert.Empty(result.ReleasesToApply);
+                }
+            }
         }
 
-        [Fact(Skip = "TODO")]
-        public void IfLocalAndRemoteAreEqualThenDoNothing()
+        [Fact]
+        public async Task IfLocalAndRemoteAreEqualThenDoNothing()
         {
-            throw new NotImplementedException();
+            string installRoot;
+            string feedDirectory;
+
+            using (Utility.WithTempDirectory(out installRoot))
+            using (Utility.WithTempDirectory(out feedDirectory)) {
+                // Create version 1.0.0
+                IntegrationTestHelper.CreateFakeInstalledApp("1.0.0", feedDirectory);
+                var packages = ReleaseEntry.BuildReleasesFile(feedDirectory);
+                ReleaseEntry.WriteReleaseFile(packages, Path.Combine(feedDirectory, "RELEASES"));
+
+                // Install version 1.0.0
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    await fixture.FullInstall(silentInstall: true);
+                }
+
+                // Check for update - local and remote are the same
+                using (var fixture = new UpdateManager(feedDirectory, "theApp", installRoot)) {
+                    var result = await fixture.CheckForUpdate();
+
+                    Assert.NotNull(result);
+                    Assert.NotNull(result.CurrentlyInstalledVersion);
+                    Assert.Equal("1.0.0", result.CurrentlyInstalledVersion.Version.ToString());
+                    Assert.Equal("1.0.0", result.FutureReleaseEntry.Version.ToString());
+                    Assert.Empty(result.ReleasesToApply);
+                }
+            }
         }
     }
 }

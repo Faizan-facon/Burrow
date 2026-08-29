@@ -6,9 +6,9 @@ namespace Squirrel.Cli
     public abstract class CliException : Exception
     {
         public int ExitCode { get; }
-        public string? Suggestion { get; }
+        public string Suggestion { get; }
 
-        protected CliException(string message, int exitCode, string? suggestion = null)
+        protected CliException(string message, int exitCode, string suggestion = null)
             : base(message)
         {
             ExitCode = exitCode;
@@ -18,16 +18,16 @@ namespace Squirrel.Cli
 
     public sealed class UserError : CliException
     {
-        public UserError(string message, string? suggestion = null)
+        public UserError(string message, string suggestion = null)
             : base(message, 1, suggestion) { }
     }
 
     public sealed class SystemError : CliException
     {
-        public SystemError(string message, string? suggestion = null)
+        public SystemError(string message, string suggestion = null)
             : base(message, 2, suggestion) { }
 
-        public SystemError(string message, Exception innerException, string? suggestion = null)
+        public SystemError(string message, Exception innerException, string suggestion = null)
             : base(message, 2, suggestion)
         {
         }
@@ -35,9 +35,9 @@ namespace Squirrel.Cli
 
     public sealed class ValidationError : CliException
     {
-        public string? OptionName { get; }
+        public string OptionName { get; }
 
-        public ValidationError(string message, string? optionName = null, string? suggestion = null)
+        public ValidationError(string message, string optionName = null, string suggestion = null)
             : base(message, 3, suggestion)
         {
             OptionName = optionName;
@@ -46,12 +46,12 @@ namespace Squirrel.Cli
 
     public static class ErrorPanel
     {
-        public static void Show(IAnsiConsole console, string title, string message, string? suggestion = null, string? example = null)
+        public static void Show(IAnsiConsole console, string title, string message, string suggestion = null, string example = null)
         {
             var panel = new Panel(message.EscapeMarkup())
             {
                 Header = new PanelHeader($"[red]✗ {title.EscapeMarkup()}[/]"),
-                Border = BoxBorder.Rounded,
+                Border = BoxBorder.Square,
                 BorderStyle = Style.Parse("red"),
                 Padding = new Padding(1, 1, 1, 1)
             };
@@ -69,13 +69,13 @@ namespace Squirrel.Cli
             }
         }
 
-        public static void ShowValidationError(IAnsiConsole console, string optionName, string message, string? example = null)
+        public static void ShowValidationError(IAnsiConsole console, string optionName, string message, string example = null)
         {
             var panel = new Panel(
                 $"[red]{optionName.EscapeMarkup()}[/] {message.EscapeMarkup()}")
             {
                 Header = new PanelHeader($"[red]✗ Validation Error[/]"),
-                Border = BoxBorder.Rounded,
+                Border = BoxBorder.Square,
                 BorderStyle = Style.Parse("red"),
                 Padding = new Padding(1, 1, 1, 1)
             };
@@ -94,7 +94,7 @@ namespace Squirrel.Cli
                 $"[red]{ex.Message.EscapeMarkup()}[/]")
             {
                 Header = new PanelHeader($"[red]✗ System Error[/]"),
-                Border = BoxBorder.Rounded,
+                Border = BoxBorder.Square,
                 BorderStyle = Style.Parse("red"),
                 Padding = new Padding(1, 1, 1, 1)
             };

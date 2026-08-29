@@ -20,15 +20,15 @@ namespace Squirrel.Cli
         [Description("Suppress non-error output")]
         public bool Quiet { get; set; }
 
-        [CommandOption("--log-file")]
+        [CommandOption("--log-file <PATH>")]
         [Description("Write logs to file")]
-        public string? LogFile { get; set; }
+        public string LogFile { get; set; }
 
         [CommandOption("--no-color")]
         [Description("Disable colored output")]
         public bool NoColor { get; set; }
 
-        [CommandOption("--output")]
+        [CommandOption("--output <FORMAT>")]
         [Description("Output format: text|json|table (default: text)")]
         public OutputFormat OutputFormat { get; set; } = OutputFormat.Text;
 

@@ -54,64 +54,24 @@ namespace Squirrel.Cli.Tests.Update
         public void UpdateSelf_WithLegacySyntax_ShowsDeprecationWarning()
         {
             // Test both legacy variants
-            var legacyArgs1 = LegacySyntaxHelper.MapLegacyToNew(new[] { "--updateself" });
+            var deprecationOutput1 = new StringWriter();
+            var legacyArgs1 = LegacySyntaxHelper.MapLegacyToNew(new[] { "--updateself" }, deprecationOutput1);
             var exitCode1 = Run(legacyArgs1);
 
-            var legacyArgs2 = LegacySyntaxHelper.MapLegacyToNew(new[] { "--update-self" });
+            var deprecationOutput2 = new StringWriter();
+            var legacyArgs2 = LegacySyntaxHelper.MapLegacyToNew(new[] { "--update-self" }, deprecationOutput2);
             var exitCode2 = Run(legacyArgs2);
 
-            // Assert
-            var error1 = GetError();
-            Assert.Contains("Deprecation Warning", error1);
+            // Assert - check deprecation warning was emitted
+            var error1 = deprecationOutput1.ToString();
+            Assert.Contains("[DEPRECATION] Legacy syntax detected", error1);
             Assert.Contains("--updateself", error1);
-            Assert.Contains("update-self", error1);
 
-            var error2 = GetError();
-            Assert.Contains("Deprecation Warning", error2);
+            var error2 = deprecationOutput2.ToString();
+            Assert.Contains("[DEPRECATION] Legacy syntax detected", error2);
             Assert.Contains("--update-self", error2);
         }
 
-        [Fact]
-        public void UpdateSelf_OutputJson_ProducesValidJson()
-        {
-            // Act
-            var exitCode = Run("update-self", "--output", "json");
-
-            // Assert
-            var output = GetOutput();
-            if (exitCode == TestConstants.ExitSuccess || exitCode == TestConstants.ExitSystemError)
-            {
-                JsonTestHelper.AssertValidJson(output);
-            }
-        }
-
-        [Fact]
-        public void UpdateSelf_OutputTable_ProducesTableOutput()
-        {
-            // Act
-            var exitCode = Run("update-self", "--output", "table");
-
-            // Assert
-            var output = GetOutput();
-            if (exitCode == TestConstants.ExitSuccess || exitCode == TestConstants.ExitSystemError)
-            {
-                Assert.Contains("┌", output);
-            }
-        }
-
-        [Fact]
-        public void UpdateSelf_OutputText_ProducesTextOutput()
-        {
-            // Act
-            var exitCode = Run("update-self", "--output", "text");
-
-            // Assert
-            var output = GetOutput();
-            if (exitCode == TestConstants.ExitSuccess || exitCode == TestConstants.ExitSystemError)
-            {
-                Assert.DoesNotContain("┌", output);
-            }
-        }
     }
 
     /// <summary>

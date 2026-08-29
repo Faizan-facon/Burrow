@@ -9,8 +9,6 @@ namespace Squirrel.Tests
 {
     public class ApplyReleasesProgressTests
     {
-
-        [Fact(Skip = "Test does not pass consistently due to dependency on Task.Delay()")]
         public async Task CalculatesPercentageCorrectly()
         {
             // Just 1 complex situation should be enough to cover this

@@ -13,182 +13,171 @@ namespace Squirrel.Tests
 {
     public class DownloadReleasesTests : IEnableLogger
     {
-        [Fact(Skip = "Rewrite this to be an integration test")]
+        [Fact]
         public void ChecksumShouldFailIfFilesAreMissing()
         {
-            Assert.False(true, "Rewrite this to be an integration test");
+            string tempDir;
+            using (Utility.WithTempDirectory(out tempDir)) {
+                var pkgDir = Path.Combine(tempDir, "packages");
+                Directory.CreateDirectory(pkgDir);
 
-            /*
-            var filename = "Squirrel.Core.1.0.0.0.nupkg";
-            var nuGetPkg = IntegrationTestHelper.GetPath("fixtures", filename);
-            var fs = new Mock<IFileSystemFactory>();
-            var urlDownloader = new Mock<IUrlDownloader>();
+                var nuGetPkg = IntegrationTestHelper.GetPath("fixtures", "Squirrel.Core.1.0.0.0-full.nupkg");
+                var entry = ReleaseEntry.GenerateFromFile(nuGetPkg);
 
-            ReleaseEntry entry;
-            using (var f = File.OpenRead(nuGetPkg)) {
-                entry = ReleaseEntry.GenerateFromFile(f, filename);
+                var impl = new UpdateManager.DownloadReleasesImpl(tempDir);
+                var ex = Assert.Throws<Exception>(() => {
+                    var method = typeof(UpdateManager.DownloadReleasesImpl).GetMethod("checksumPackage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    try {
+                        method.Invoke(impl, new object[] { entry });
+                    } catch (System.Reflection.TargetInvocationException tie) {
+                        throw tie.InnerException;
+                    }
+                });
+
+                Assert.Contains("doesn't exist", ex.Message);
             }
-
-            var fileInfo = new Mock<FileInfoBase>();
-            fileInfo.Setup(x => x.OpenRead()).Returns(File.OpenRead(nuGetPkg));
-            fileInfo.Setup(x => x.Exists).Returns(false);
-
-            fs.Setup(x => x.GetFileInfo(Path.Combine(".", "theApp", "packages", filename))).Returns(fileInfo.Object);
-
-            var fixture = ExposedObject.From(
-                new UpdateManager("http://lol", "theApp", ".", fs.Object, urlDownloader.Object));
-
-            bool shouldDie = true;
-            try {
-                // NB: We can't use Assert.Throws here because the binder
-                // will try to pick the wrong method
-                fixture.checksumPackage(entry);
-            } catch (Exception) {
-                shouldDie = false;
-            }
-
-            shouldDie.ShouldBeFalse();
-            */
         }
 
-        [Fact(Skip = "Rewrite this to be an integration test")]
+        [Fact]
         public void ChecksumShouldFailIfFilesAreBogus()
         {
-            Assert.False(true, "Rewrite this to be an integration test");
+            string tempDir;
+            using (Utility.WithTempDirectory(out tempDir)) {
+                var pkgDir = Path.Combine(tempDir, "packages");
+                Directory.CreateDirectory(pkgDir);
 
-            /*
-            var filename = "Squirrel.Core.1.0.0.0.nupkg";
-            var nuGetPkg = IntegrationTestHelper.GetPath("fixtures", filename);
-            var fs = new Mock<IFileSystemFactory>();
-            var urlDownloader = new Mock<IUrlDownloader>();
+                var nuGetPkg = IntegrationTestHelper.GetPath("fixtures", "Squirrel.Core.1.0.0.0-full.nupkg");
+                var entry = ReleaseEntry.GenerateFromFile(nuGetPkg);
 
-            ReleaseEntry entry;
-            using (var f = File.OpenRead(nuGetPkg)) {
-                entry = ReleaseEntry.GenerateFromFile(f, filename);
+                var targetFile = Path.Combine(pkgDir, entry.Filename);
+                File.WriteAllText(targetFile, "corrupted bogus content");
+
+                var impl = new UpdateManager.DownloadReleasesImpl(tempDir);
+                var ex = Assert.Throws<Exception>(() => {
+                    var method = typeof(UpdateManager.DownloadReleasesImpl).GetMethod("checksumPackage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    try {
+                        method.Invoke(impl, new object[] { entry });
+                    } catch (System.Reflection.TargetInvocationException tie) {
+                        throw tie.InnerException;
+                    }
+                });
+
+                Assert.True(ex.Message.Contains("size doesn't match") || ex.Message.Contains("Checksum doesn't match"));
+                Assert.False(File.Exists(targetFile));
             }
-
-            var fileInfo = new Mock<FileInfoBase>();
-            fileInfo.Setup(x => x.OpenRead()).Returns(new MemoryStream(Encoding.UTF8.GetBytes("Lol broken")));
-            fileInfo.Setup(x => x.Exists).Returns(true);
-            fileInfo.Setup(x => x.Length).Returns(new FileInfo(nuGetPkg).Length);
-            fileInfo.Setup(x => x.Delete()).Verifiable();
-
-            fs.Setup(x => x.GetFileInfo(Path.Combine(".", "theApp", "packages", filename))).Returns(fileInfo.Object);
-
-            var fixture = ExposedObject.From(
-                new UpdateManager("http://lol", "theApp", ".", fs.Object, urlDownloader.Object));
-
-            bool shouldDie = true;
-            try {
-                fixture.checksumPackage(entry);
-            } catch (Exception ex) {
-                this.Log().InfoException("Checksum failure", ex);
-                shouldDie = false;
-            }
-
-            shouldDie.ShouldBeFalse();
-            fileInfo.Verify(x => x.Delete(), Times.Once());
-            */
         }
 
-        [Fact(Skip = "Rewrite this to be an integration test")]
-        public void DownloadReleasesFromHttpServerIntegrationTest()
+        [Fact]
+        public async Task DownloadReleasesFromHttpServerIntegrationTest()
         {
-            Assert.False(true, "Rewrite this to not use the SampleUpdatingApp");
+            string sourceDir;
+            string targetDir;
+            using (Utility.WithTempDirectory(out sourceDir))
+            using (Utility.WithTempDirectory(out targetDir)) {
+                var fixturePkg = IntegrationTestHelper.GetPath("fixtures", "Squirrel.Core.1.0.0.0-full.nupkg");
+                var sourceFile = Path.Combine(sourceDir, Path.GetFileName(fixturePkg));
+                File.Copy(fixturePkg, sourceFile);
 
-            /*
-            string tempDir = null;
+                var entry = ReleaseEntry.GenerateFromFile(sourceFile);
+                var entries = new[] { entry };
 
-            var updateDir = new DirectoryInfo(IntegrationTestHelper.GetPath("..", "SampleUpdatingApp", "SampleReleasesFolder"));
+                ReleaseEntry.WriteReleaseFile(entries, Path.Combine(sourceDir, "RELEASES"));
 
-            IDisposable disp;
-            try {
-                var httpServer = new StaticHttpServer(30405, updateDir.FullName);
-                disp = httpServer.Start();
-            } catch (HttpListenerException) {
-                Assert.False(true, @"Windows sucks, go run 'netsh http add urlacl url=http://+:30405/ user=MYMACHINE\MyUser");
-                return;
-            }
+                int port = new Random().Next(32000, 48000);
+                using (var listener = new HttpListener()) {
+                    var prefix = $"http://127.0.0.1:{port}/";
+                    listener.Prefixes.Add(prefix);
+                    try {
+                        listener.Start();
+                    } catch (HttpListenerException) {
+                        port = new Random().Next(48001, 60000);
+                        prefix = $"http://127.0.0.1:{port}/";
+                        listener.Prefixes.Clear();
+                        listener.Prefixes.Add(prefix);
+                        listener.Start();
+                    }
 
-            var entriesToDownload = updateDir.GetFiles("*.nupkg")
-                .Select(x => ReleaseEntry.GenerateFromFile(x.FullName))
-                .ToArray();
+                    var serverTask = Task.Run(async () => {
+                        while (listener.IsListening) {
+                            try {
+                                var ctx = await listener.GetContextAsync();
+                                var requestedFile = ctx.Request.Url.AbsolutePath.TrimStart('/');
+                                var localFile = Path.Combine(sourceDir, requestedFile);
+                                if (File.Exists(localFile)) {
+                                    ctx.Response.StatusCode = 200;
+                                    ctx.Response.ContentType = "application/octet-stream";
+                                    using (var fs = File.OpenRead(localFile)) {
+                                        ctx.Response.ContentLength64 = fs.Length;
+                                        await fs.CopyToAsync(ctx.Response.OutputStream);
+                                    }
+                                } else {
+                                    ctx.Response.StatusCode = 404;
+                                }
+                                ctx.Response.Close();
+                            } catch {
+                                break;
+                            }
+                        }
+                    });
 
-            entriesToDownload.Count().ShouldBeGreaterThan(0);
+                    var packagesDir = Path.Combine(targetDir, "theApp", "packages");
+                    Directory.CreateDirectory(packagesDir);
 
-            using (disp)
-            using (Utility.WithTempDirectory(out tempDir)) {
-                // NB: This is normally done by CheckForUpdates, but since 
-                // we're skipping that in the test we have to do it ourselves
-                Directory.CreateDirectory(Path.Combine(tempDir, "SampleUpdatingApp", "packages"));
+                    using (var mgr = new UpdateManager(prefix, "theApp", targetDir)) {
+                        var progressList = new List<int>();
+                        await mgr.DownloadReleases(entries, progressList.Add);
 
-                var fixture = new UpdateManager("http://localhost:30405", "SampleUpdatingApp", tempDir);
-                using (fixture) {
-                    var progress = new List<int>();
-                    await fixture.DownloadReleases(entriesToDownload, progress.Add);
+                        Assert.True(progressList.Count > 0);
+                        Assert.Equal(100, progressList.Last());
+                    }
 
-                    progress
-                        .Aggregate(0, (acc, x) => { x.ShouldBeGreaterThan(acc); return x; })
-                        .ShouldEqual(100);
+                    listener.Stop();
+                    await Task.WhenAny(serverTask, Task.Delay(500));
+
+                    var downloadedFile = Path.Combine(targetDir, "theApp", "packages", entry.Filename);
+                    Assert.True(File.Exists(downloadedFile));
+                    var actualEntry = ReleaseEntry.GenerateFromFile(downloadedFile);
+                    Assert.Equal(entry.SHA1, actualEntry.SHA1);
+                    Assert.Equal(entry.Filesize, actualEntry.Filesize);
                 }
-
-                entriesToDownload.ForEach(x => {
-                    this.Log().Info("Looking for {0}", x.Filename);
-                    var actualFile = Path.Combine(tempDir, "SampleUpdatingApp", "packages", x.Filename);
-                    File.Exists(actualFile).ShouldBeTrue();
-
-                    var actualEntry = ReleaseEntry.GenerateFromFile(actualFile);
-                    actualEntry.SHA1.ShouldEqual(x.SHA1);
-                    actualEntry.Version.ShouldEqual(x.Version);
-                });
             }
-            */
         }
 
-        [Fact(Skip = "Rewrite this to be an integration test")]
-        public void DownloadReleasesFromFileDirectoryIntegrationTest()
+        [Fact]
+        public async Task DownloadReleasesFromFileDirectoryIntegrationTest()
         {
-            Assert.False(true, "Rewrite this to not use the SampleUpdatingApp");
+            string sourceDir;
+            string targetDir;
+            using (Utility.WithTempDirectory(out sourceDir))
+            using (Utility.WithTempDirectory(out targetDir)) {
+                var fixturePkg = IntegrationTestHelper.GetPath("fixtures", "Squirrel.Core.1.0.0.0-full.nupkg");
+                var sourceFile = Path.Combine(sourceDir, Path.GetFileName(fixturePkg));
+                File.Copy(fixturePkg, sourceFile);
 
-            /*
-            string tempDir = null;
+                var entry = ReleaseEntry.GenerateFromFile(sourceFile);
+                var entries = new[] { entry };
 
-            var updateDir = new DirectoryInfo(IntegrationTestHelper.GetPath("..", "SampleUpdatingApp", "SampleReleasesFolder"));
+                ReleaseEntry.WriteReleaseFile(entries, Path.Combine(sourceDir, "RELEASES"));
 
-            var entriesToDownload = updateDir.GetFiles("*.nupkg")
-                .Select(x => ReleaseEntry.GenerateFromFile(x.FullName))
-                .ToArray();
+                var packagesDir = Path.Combine(targetDir, "theApp", "packages");
+                Directory.CreateDirectory(packagesDir);
 
-            entriesToDownload.Count().ShouldBeGreaterThan(0);
+                using (var mgr = new UpdateManager(sourceDir, "theApp", targetDir)) {
+                    var progressList = new List<int>();
 
-            using (Utility.WithTempDirectory(out tempDir)) {
-                // NB: This is normally done by CheckForUpdates, but since 
-                // we're skipping that in the test we have to do it ourselves
-                Directory.CreateDirectory(Path.Combine(tempDir, "SampleUpdatingApp", "packages"));
+                    await mgr.DownloadReleases(entries, progressList.Add);
 
-                var fixture = new UpdateManager(updateDir.FullName, "SampleUpdatingApp", tempDir);
-                using (fixture) {
-                    var progress = new List<int>();
-
-                    await fixture.DownloadReleases(entriesToDownload, progress.Add);
-                    this.Log().Info("Progress: [{0}]", String.Join(",", progress));
-
-                    progress
-                        .Aggregate(0, (acc, x) => { x.ShouldBeGreaterThan(acc); return x; })
-                        .ShouldEqual(100);
+                    Assert.True(progressList.Count > 0);
+                    Assert.Equal(100, progressList.Last());
                 }
 
-                entriesToDownload.ForEach(x => {
-                    this.Log().Info("Looking for {0}", x.Filename);
-                    var actualFile = Path.Combine(tempDir, "SampleUpdatingApp", "packages", x.Filename);
-                    File.Exists(actualFile).ShouldBeTrue();
+                var downloadedFile = Path.Combine(targetDir, "theApp", "packages", entry.Filename);
+                Assert.True(File.Exists(downloadedFile));
 
-                    var actualEntry = ReleaseEntry.GenerateFromFile(actualFile);
-                    actualEntry.SHA1.ShouldEqual(x.SHA1);
-                    actualEntry.Version.ShouldEqual(x.Version);
-                });
+                var actualEntry = ReleaseEntry.GenerateFromFile(downloadedFile);
+                Assert.Equal(entry.SHA1, actualEntry.SHA1);
+                Assert.Equal(entry.Filesize, actualEntry.Filesize);
             }
-            */
         }
     }
 }

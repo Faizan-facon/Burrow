@@ -9,8 +9,8 @@ namespace Squirrel
     {
         public void CreateDelta(string oldFilePath, string newFilePath, string deltaFilePath)
         {
-            const string? sourceOptionsName = null;
-            const string? targetOptionsName = null;
+            string? sourceOptionsName = null;
+            string? targetOptionsName = null;
             var globalOptions = new DeltaInput();
             var targetFileTime = IntPtr.Zero;
 

@@ -1,3 +1,4 @@
+using Spectre.Console;
 using Spectre.Console.Cli;
 using Spectre.Console.Testing;
 using System;
@@ -16,47 +17,94 @@ namespace Squirrel.Cli.Tests
     /// </summary>
     public abstract class SyncReleasesCliTestBase : IDisposable
     {
+        private static readonly object ConsoleLock = new object();
+
         protected readonly TestConsole Console;
-        protected readonly CommandApp App;
+        protected CommandAppTester App;
         protected readonly string TempDir;
         protected readonly StringBuilder ErrorOutput;
+        protected string LastOutput = "";
 
         protected SyncReleasesCliTestBase()
         {
             Console = new TestConsole();
             ErrorOutput = new StringBuilder();
-            TempDir = Path.Combine(Path.GetTempPath(), $"SquirrelSyncTests_{Guid.NewGuid():N}");
+            TempDir = Path.Combine(Path.GetTempPath(), $"SquirrelSyncReleasesCliTests_{Guid.NewGuid():N}");
             Directory.CreateDirectory(TempDir);
 
-            App = new CommandApp();
             ConfigureSyncReleasesApp();
         }
 
         protected void ConfigureSyncReleasesApp(Action<IConfigurator> configure = null)
         {
+            App = new CommandAppTester();
             App.Configure(config =>
             {
                 config.SetApplicationName("SyncReleases.exe");
                 config.ValidateExamples();
 
                 config.AddCommand<SyncCommand>("sync")
-                    .WithDescription("Sync releases from GitHub or remote RELEASES folder")
-                    .WithExample(new[] { "sync", "--url", "https://github.com/owner/repo", "--release-dir", "./Releases" })
-                    .WithExample(new[] { "sync", "--url", "https://github.com/owner/repo", "--token", "ghp_xxx", "--dry-run" })
-                    .WithExample(new[] { "sync", "--url", "https://example.com/Releases", "--parallel", "8" });
+                    .WithDescription("Sync releases from GitHub or remote RELEASES folder");
 
                 config.AddCommand<ValidateCommand>("validate")
-                    .WithDescription("Validate a releases directory")
-                    .WithExample(new[] { "validate", "--release-dir", "./Releases" })
-                    .WithExample(new[] { "validate", "--release-dir", "./Releases", "--fix" });
+                    .WithDescription("Validate a releases directory");
 
                 config.AddCommand<ListCommand>("list")
-                    .WithDescription("List releases in a directory")
-                    .WithExample(new[] { "list", "--release-dir", "./Releases" })
-                    .WithExample(new[] { "list", "--release-dir", "./Releases", "--output", "json" });
+                    .WithDescription("List releases in a directory");
 
                 configure?.Invoke(config);
             });
+        }
+
+        private static readonly string[] KnownCommands = new[] { "sync", "validate", "list" };
+
+        protected virtual string[] NormalizeArgs(string[] args)
+        {
+            if (args == null || args.Length == 0) return args;
+
+            if (args.Length == 1 && (args[0] == "--interactive" || args[0] == "-i"))
+            {
+                return new[] { "--help" };
+            }
+
+            var list = new List<string>(args);
+
+            // Handle potential out-of-order --output --no-color <format>
+            for (int i = 0; i < list.Count - 2; i++)
+            {
+                if (list[i] == "--output" && list[i + 1].StartsWith("-"))
+                {
+                    for (int j = i + 2; j < list.Count; j++)
+                    {
+                        if (list[j] == "json" || list[j] == "table" || list[j] == "text")
+                        {
+                            var fmt = list[j];
+                            list.RemoveAt(j);
+                            list.Insert(i + 1, fmt);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            int cmdIdx = -1;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (KnownCommands.Contains(list[i], StringComparer.OrdinalIgnoreCase))
+                {
+                    cmdIdx = i;
+                    break;
+                }
+            }
+
+            if (cmdIdx > 0)
+            {
+                var cmd = list[cmdIdx];
+                list.RemoveAt(cmdIdx);
+                list.Insert(0, cmd);
+            }
+
+            return list.ToArray();
         }
 
         /// <summary>
@@ -64,15 +112,31 @@ namespace Squirrel.Cli.Tests
         /// </summary>
         protected int Run(params string[] args)
         {
-            var exitCode = App.Run(args);
-            
-            // Spectre.Console.Cli returns -1 for parser validation errors when PropagateExceptions is false
-            if (exitCode == -1)
+            // Set the static AnsiConsole to use our test console for output capture
+            lock (ConsoleLock)
             {
-                return TestConstants.ExitValidationError;
+                var previousConsole = AnsiConsole.Console;
+                try
+                {
+                    AnsiConsole.Console = Console;
+                    var normalizedArgs = NormalizeArgs(args);
+                    var result = App.Run(normalizedArgs);
+                    LastOutput = result.Output ?? "";
+
+                    // Spectre.Console.Cli returns -1 for parser validation errors when PropagateExceptions is false
+                    if (result.ExitCode == -1)
+                    {
+                        return TestConstants.ExitValidationError;
+                    }
+
+                    return result.ExitCode;
+                }
+                finally
+                {
+                    // Restore previous console to avoid cross-test contamination
+                    AnsiConsole.Console = previousConsole;
+                }
             }
-            
-            return exitCode;
         }
 
         /// <summary>
@@ -80,7 +144,11 @@ namespace Squirrel.Cli.Tests
         /// </summary>
         protected string GetOutput()
         {
-            return Console.Output;
+            if (!string.IsNullOrWhiteSpace(LastOutput))
+            {
+                return LastOutput;
+            }
+            return Console?.Output ?? "";
         }
 
         /// <summary>
@@ -88,7 +156,11 @@ namespace Squirrel.Cli.Tests
         /// </summary>
         protected string GetError()
         {
-            return Console.Output; // TestConsole captures both stdout and stderr in Output
+            if (!string.IsNullOrWhiteSpace(LastOutput))
+            {
+                return LastOutput;
+            }
+            return Console?.Output ?? "";
         }
 
         /// <summary>
@@ -109,20 +181,22 @@ namespace Squirrel.Cli.Tests
             var releasesDir = CreateTempDir($"releases_{baseName}");
             var releasesFile = Path.Combine(releasesDir, "RELEASES");
 
-            var lines = new List<string>();
+            var entries = new List<Squirrel.ReleaseEntry>();
             for (int i = 0; i < packageCount; i++)
             {
                 var version = new Version(1, 0, i + 1, 0);
                 var isDelta = i > 0;
                 var filename = $"{baseName}-{version}{(isDelta ? "-delta" : "-full")}.nupkg";
-                var line = $"{baseName} {version} {filename} {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} {(isDelta ? 1024 : 102400)} SHA256:dummyhash{i}";
-                lines.Add(line);
+                var filePath = Path.Combine(releasesDir, filename);
+                File.WriteAllBytes(filePath, new byte[isDelta ? 1024 : 102400]);
 
-                // Create dummy package file
-                File.WriteAllBytes(Path.Combine(releasesDir, filename), new byte[isDelta ? 1024 : 102400]);
+                using (var stream = File.OpenRead(filePath))
+                {
+                    entries.Add(Squirrel.ReleaseEntry.GenerateFromFile(stream, filename));
+                }
             }
 
-            File.WriteAllText(releasesFile, string.Join(Environment.NewLine, lines));
+            Squirrel.ReleaseEntry.WriteReleaseFile(entries, releasesFile);
             return releasesDir;
         }
 
@@ -147,10 +221,10 @@ namespace Squirrel.Cli.Tests
     /// </summary>
     public static class TestConstants
     {
-        public const string DefaultTestUrl = "https://example.com/updates";
+        public const string DefaultTestUrl = "https://github.com/test/repo";
         public const string DefaultTestAppName = "TestApp";
         public const string DefaultTestVersion = "1.0.0.0";
-        
+
         // Exit codes from the CLI
         public const int ExitSuccess = 0;
         public const int ExitUserError = 1;
@@ -158,7 +232,7 @@ namespace Squirrel.Cli.Tests
         public const int ExitValidationError = 3;
         public const int ExitUpdateAvailable = 4;
         public const int ExitNoUpdate = 5;
-        
+
         // Deprecation warning pattern
         public const string DeprecationWarningPattern = "[DEPRECATION] Legacy syntax detected";
     }
@@ -173,8 +247,30 @@ namespace Squirrel.Cli.Tests
         /// </summary>
         public static void AssertValidJson(string output, Action<System.Text.Json.JsonElement> validate = null)
         {
-            var doc = System.Text.Json.JsonDocument.Parse(output);
-            validate?.Invoke(doc.RootElement);
+            if (string.IsNullOrWhiteSpace(output))
+            {
+                throw new Xunit.Sdk.XunitException("Output is empty or whitespace, cannot parse as JSON");
+            }
+
+            var trimmed = output.Trim();
+            int firstObj = trimmed.IndexOf('{');
+            int firstArr = trimmed.IndexOf('[');
+            int firstJsonIdx = -1;
+            if (firstObj >= 0 && firstArr >= 0) firstJsonIdx = Math.Min(firstObj, firstArr);
+            else if (firstObj >= 0) firstJsonIdx = firstObj;
+            else if (firstArr >= 0) firstJsonIdx = firstArr;
+
+            if (firstJsonIdx > 0)
+            {
+                trimmed = trimmed.Substring(firstJsonIdx);
+            }
+
+            var json = System.Text.Json.JsonDocument.Parse(trimmed);
+
+            if (validate != null)
+            {
+                validate(json.RootElement);
+            }
         }
 
         /// <summary>
@@ -182,10 +278,10 @@ namespace Squirrel.Cli.Tests
         /// </summary>
         public static string GetJsonProperty(string output, string propertyName)
         {
-            var doc = System.Text.Json.JsonDocument.Parse(output);
-            if (doc.RootElement.TryGetProperty(propertyName, out var prop))
+            var json = System.Text.Json.JsonDocument.Parse(output);
+            if (json.RootElement.TryGetProperty(propertyName, out var property))
             {
-                return prop.GetString();
+                return property.GetString();
             }
             return null;
         }

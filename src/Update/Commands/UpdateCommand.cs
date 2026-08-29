@@ -9,30 +9,44 @@ namespace Squirrel.Cli.Commands
 {
     public class UpdateSettings : GlobalSettings
     {
-        [CommandArgument(0, "<URL>")]
+        [CommandArgument(0, "[URL]")]
         [Description("Update URL")]
-        public string? Url { get; set; }
+        public string UrlArg { get; set; }
 
-        [CommandOption("--app-name")]
+        [CommandOption("-u|--url <URL>")]
+        [Description("Update URL")]
+        public string Url { get; set; }
+
+        [CommandOption("--app-name <NAME>")]
         [Description("Application name (defaults to directory name)")]
-        public string? AppName { get; set; }
+        public string AppName { get; set; }
 
         [CommandOption("--ignore-delta")]
         [Description("Ignore delta updates and use full updates")]
         public bool IgnoreDelta { get; set; }
+
+        public string GetEffectiveUrl() => Url ?? UrlArg;
     }
 
     public sealed class UpdateCommand : CommandBase<UpdateSettings>
     {
         protected override int ExecuteCommand(UpdateSettings settings)
         {
-            ValidateRequired(settings.Url, "--url", "Update.exe update --url https://example.com/updates");
+            var url = settings.GetEffectiveUrl();
+            ValidateRequired(url, "--url", "Update.exe update --url https://example.com/updates");
+
+            if (!url!.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+                !url.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ValidationError("Invalid repository URL. Must start with http, https, or file://", "--url");
+            }
 
             var appName = settings.AppName ?? GetAppNameFromDirectory();
 
-            Context.Log().Info("Starting update, downloading from " + settings.Url);
+            Context.Log().Info("Starting update, downloading from " + url);
 
-            using (var mgr = new Squirrel.UpdateManager(settings.Url, appName))
+            using (var mgr = new Squirrel.UpdateManager(url, appName))
             {
                 Squirrel.UpdateInfo updateInfo = null;
                 bool ignoreDeltaUpdates = settings.IgnoreDelta;
@@ -86,7 +100,7 @@ namespace Squirrel.Cli.Commands
             return 0;
         }
 
-        private string GetAppNameFromDirectory(string? path = null)
+        private string GetAppNameFromDirectory(string path = null)
         {
             path = path ?? Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             return new DirectoryInfo(path).Name;

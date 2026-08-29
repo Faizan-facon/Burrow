@@ -11,9 +11,9 @@ namespace Squirrel.Cli.Commands
 {
     public class ValidateSettings : GlobalSettings
     {
-        [CommandOption("-r|--release-dir")]
+        [CommandOption("-r|--release-dir <DIR>")]
         [Description("Path to a release directory to validate")]
-        public string? ReleaseDir { get; set; }
+        public string ReleaseDir { get; set; }
 
         [CommandOption("--fix")]
         [Description("Attempt to fix issues found")]
@@ -24,7 +24,7 @@ namespace Squirrel.Cli.Commands
     {
         protected override int ExecuteCommand(ValidateSettings settings)
         {
-            var releaseDir = settings.ReleaseDir ?? Path.Combine(".", "Releases");
+            var releaseDir = settings.ReleaseDir ?? (Directory.Exists(Path.Combine(".", "Releases")) ? Path.Combine(".", "Releases") : ".");
 
             if (!Directory.Exists(releaseDir))
             {
@@ -84,27 +84,24 @@ namespace Squirrel.Cli.Commands
             }
             else
             {
-                var table = new Spectre.Console.Table();
-                table.Border = Spectre.Console.TableBorder.Rounded;
-                table.BorderStyle = SquirrelTheme.TableBorder;
-                table.AddColumn(new Spectre.Console.TableColumn("Version"));
-                table.AddColumn(new Spectre.Console.TableColumn("Filename"));
-                table.AddColumn(new Spectre.Console.TableColumn("Size"));
-                table.AddColumn(new Spectre.Console.TableColumn("Type"));
-
-                foreach (var entry in entries.OrderByDescending(e => e.Version))
+                var outputData = entries.OrderByDescending(e => e.Version).Select(entry =>
                 {
                     var filePath = Path.Combine(releaseDir, entry.Filename);
                     var size = File.Exists(filePath) ? new FileInfo(filePath).Length : 0;
-                    table.AddRow(
-                        entry.Version.ToString(),
-                        entry.Filename,
-                        FormatBytes(size),
-                        entry.IsDelta ? "Delta" : "Full");
-                }
+                    return new
+                    {
+                        version = entry.Version.ToString(),
+                        filename = entry.Filename,
+                        size = FormatBytes(size),
+                        type = entry.IsDelta ? "Delta" : "Full"
+                    };
+                }).ToList();
 
-                Context.Console.Write(table);
-                Context.WriteSuccess($"Validation passed - {entries.Count} releases found");
+                Output.Write(outputData);
+                if (Context.OutputFormat != OutputFormat.Json)
+                {
+                    Context.WriteSuccess($"Validation passed - {entries.Count} releases found");
+                }
                 return 0;
             }
         }

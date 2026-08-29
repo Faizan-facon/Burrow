@@ -112,7 +112,7 @@ namespace Squirrel.Cli
             var props = first.GetType().GetProperties();
 
             var table = new Table();
-            table.Border = TableBorder.Rounded;
+            table.Border = TableBorder.Square;
             table.BorderStyle = SquirrelTheme.TableBorder;
 
             foreach (var prop in props)

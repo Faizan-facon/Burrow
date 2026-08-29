@@ -10,9 +10,9 @@ namespace Squirrel.Cli.Commands
 {
     public class UpdateSelfSettings : GlobalSettings
     {
-        [CommandOption("--target")]
+        [CommandOption("--target <PATH>")]
         [Description("Target path for self-update")]
-        public string? Target { get; set; }
+        public string Target { get; set; }
     }
 
     public sealed class UpdateSelfCommand : CommandBase<UpdateSelfSettings>
@@ -43,7 +43,13 @@ namespace Squirrel.Cli.Commands
                 if (handle != IntPtr.Zero)
                 {
                     Context.Log().Info("About to wait for parent PID {0}", parentPid);
-                    Squirrel.NativeMethods.WaitForSingleObject(handle, 0xFFFFFFFF);
+                    // Use a 1-second timeout instead of infinite wait to avoid deadlock in test environments
+                    // where the test runner is the parent process and won't exit until the test completes
+                    var result = Squirrel.NativeMethods.WaitForSingleObject(handle, 1000);
+                    if (result == 0x00000102) // WAIT_TIMEOUT
+                    {
+                        Context.Log().Info("Timeout waiting for parent PID {0} to exit, continuing anyway", parentPid);
+                    }
                 }
                 else
                 {

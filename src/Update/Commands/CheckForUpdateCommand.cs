@@ -11,26 +11,40 @@ namespace Squirrel.Cli.Commands
 {
     public class CheckForUpdateSettings : GlobalSettings
     {
-        [CommandArgument(0, "<URL>")]
+        [CommandArgument(0, "[URL]")]
         [Description("Update URL to check")]
-        public string? Url { get; set; }
+        public string UrlArg { get; set; }
 
-        [CommandOption("--app-name")]
+        [CommandOption("-u|--url <URL>")]
+        [Description("Update URL to check")]
+        public string Url { get; set; }
+
+        [CommandOption("--app-name <NAME>")]
         [Description("Application name (defaults to directory name)")]
-        public string? AppName { get; set; }
+        public string AppName { get; set; }
+
+        public string GetEffectiveUrl() => Url ?? UrlArg;
     }
 
     public sealed class CheckForUpdateCommand : CommandBase<CheckForUpdateSettings>
     {
         protected override int ExecuteCommand(CheckForUpdateSettings settings)
         {
-            ValidateRequired(settings.Url, "--url", "Update.exe check-update --url https://example.com/updates");
+            var url = settings.GetEffectiveUrl();
+            ValidateRequired(url, "--url", "Update.exe check-update --url https://example.com/updates");
+
+            if (!url!.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+                !url.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ValidationError("Invalid repository URL. Must start with http, https, or file://", "--url");
+            }
 
             var appName = settings.AppName ?? GetAppNameFromDirectory();
 
-            Context.Log().Info("Fetching update information, downloading from " + settings.Url);
+            Context.Log().Info("Fetching update information, downloading from " + url);
 
-            using (var mgr = new Squirrel.UpdateManager(settings.Url, appName))
+            using (var mgr = new Squirrel.UpdateManager(url, appName))
             {
                 var progressTask = Progress.AddTask("Checking for updates...", maxValue: 100);
 
@@ -69,7 +83,7 @@ namespace Squirrel.Cli.Commands
             }
         }
 
-        private string GetAppNameFromDirectory(string? path = null)
+        private string GetAppNameFromDirectory(string path = null)
         {
             path = path ?? Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             return new DirectoryInfo(path).Name;

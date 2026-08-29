@@ -26,16 +26,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+
       - name: Build Burrow
         shell: cmd
-        run: ./src/build_official.cmd
+        run: .\src\build_official.cmd
 
       - name: Test Burrow
         shell: cmd
-        run: ./test/test_official.cmd
+        run: .\test\test_official.cmd
+
+      - name: Test CLI Tools
+        run: |
+          dotnet test test/Update.Cli.Tests/Update.Cli.Tests.csproj --verbosity normal
+          dotnet test test/SyncReleases.Cli.Tests/SyncReleases.Cli.Tests.csproj --verbosity normal
 
       - name: Save build
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: artifacts
           path: build/artifacts/

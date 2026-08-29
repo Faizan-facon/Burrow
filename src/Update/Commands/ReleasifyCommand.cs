@@ -2,6 +2,7 @@ using Spectre.Console.Cli;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -11,46 +12,53 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using NuGet;
-
+using Squirrel.Update;
+using Squirrel.SimpleSplat;
 namespace Squirrel.Cli.Commands
 {
     public class ReleasifySettings : GlobalSettings
     {
-        [CommandArgument(0, "<PACKAGE>")]
+        [CommandArgument(0, "[PACKAGE]")]
         [Description("NuGet package file (.nupkg)")]
-        public string? Package { get; set; }
+        public string PackageArg { get; set; }
 
-        [CommandOption("-r|--release-dir")]
+        [CommandOption("-p|--package <PACKAGE>")]
+        [Description("NuGet package file (.nupkg)")]
+        public string PackageOption { get; set; }
+
+        public string Package { get => PackageOption ?? PackageArg; set => PackageOption = value; }
+
+        [CommandOption("-r|--release-dir <DIR>")]
         [Description("Path to a release directory")]
-        public string? ReleaseDir { get; set; }
+        public string ReleaseDir { get; set; }
 
-        [CommandOption("-p|--packages-dir")]
+        [CommandOption("--packages-dir <DIR>")]
         [Description("Path to the NuGet Packages directory")]
-        public string? PackagesDir { get; set; }
+        public string PackagesDir { get; set; }
 
-        [CommandOption("--bootstrapper-exe")]
+        [CommandOption("--bootstrapper-exe <EXE>")]
         [Description("Path to the Setup.exe to use as a template")]
-        public string? BootstrapperExe { get; set; }
+        public string BootstrapperExe { get; set; }
 
-        [CommandOption("-g|--loading-gif")]
+        [CommandOption("-g|--loading-gif <GIF>")]
         [Description("Path to an animated GIF to be displayed during installation")]
-        public string? LoadingGif { get; set; }
+        public string LoadingGif { get; set; }
 
-        [CommandOption("-i|--icon")]
+        [CommandOption("-i|--icon <ICO>")]
         [Description("Path to an ICO file for shortcuts")]
-        public string? Icon { get; set; }
+        public string Icon { get; set; }
 
-        [CommandOption("--setup-icon")]
+        [CommandOption("--setup-icon <ICO>")]
         [Description("Path to an ICO file for the Setup executable's icon")]
-        public string? SetupIcon { get; set; }
+        public string SetupIcon { get; set; }
 
-        [CommandOption("-n|--sign-with-params")]
+        [CommandOption("-n|--sign-with-params <PARAMS>")]
         [Description("Sign the installer via SignTool.exe with the parameters given")]
-        public string? SigningParameters { get; set; }
+        public string SigningParameters { get; set; }
 
-        [CommandOption("-b|--base-url")]
+        [CommandOption("-b|--base-url <URL>")]
         [Description("Base URL to prefix the RELEASES file packages with")]
-        public string? BaseUrl { get; set; }
+        public string BaseUrl { get; set; }
 
         [CommandOption("--no-msi")]
         [Description("Don't generate an MSI package")]
@@ -60,9 +68,9 @@ namespace Squirrel.Cli.Commands
         [Description("Don't generate delta packages")]
         public bool NoDelta { get; set; }
 
-        [CommandOption("--framework-version")]
+        [CommandOption("--framework-version <VER>")]
         [Description("Set the required .NET framework version (e.g. net461)")]
-        public string? FrameworkVersion { get; set; } = "net45";
+        public string FrameworkVersion { get; set; } = "net45";
 
         [CommandOption("--msi-win64")]
         [Description("Mark the MSI as 64-bit")]
@@ -72,8 +80,8 @@ namespace Squirrel.Cli.Commands
         [Description("Update shortcuts that already exist, rather than creating new ones")]
         public bool UpdateOnly { get; set; }
     }
+    public sealed class ReleasifyCommand : CommandBase<ReleasifySettings>, IEnableLogger
 
-    public sealed class ReleasifyCommand : CommandBase<ReleasifySettings>
     {
         protected override int ExecuteCommand(ReleasifySettings settings)
         {
@@ -255,14 +263,14 @@ namespace Squirrel.Cli.Commands
             return 0;
         }
 
-        static async Task<string> CreateSetupEmbeddedZip(string fullPackage, string releasesDir, string backgroundGif, string signingOpts, string setupIcon)
+        async Task<string> CreateSetupEmbeddedZip(string fullPackage, string releasesDir, string backgroundGif, string signingOpts, string setupIcon)
         {
             string tempPath;
 
             Context.Log().Info("Building embedded zip file for Setup.exe");
             using (Squirrel.Utility.WithTempDirectory(out tempPath, null))
             {
-                Context.ErrorIfThrows(() =>
+                this.ErrorIfThrows(() =>
                 {
                     File.Copy(Assembly.GetEntryAssembly().Location.Replace("-Mono.exe", ".exe"), Path.Combine(tempPath, "Update.exe"));
                     File.Copy(fullPackage, Path.Combine(tempPath, Path.GetFileName(fullPackage)));
@@ -270,7 +278,7 @@ namespace Squirrel.Cli.Commands
 
                 if (!String.IsNullOrWhiteSpace(backgroundGif))
                 {
-                    Context.ErrorIfThrows(() =>
+                    this.ErrorIfThrows(() =>
                     {
                         File.Copy(backgroundGif, Path.Combine(tempPath, "background.gif"));
                     }, "Failed to write animated GIF to temp dir: " + tempPath);
@@ -278,7 +286,7 @@ namespace Squirrel.Cli.Commands
 
                 if (!String.IsNullOrWhiteSpace(setupIcon))
                 {
-                    Context.ErrorIfThrows(() =>
+                    this.ErrorIfThrows(() =>
                     {
                         File.Copy(setupIcon, Path.Combine(tempPath, "setupIcon.ico"));
                     }, "Failed to write icon to temp dir: " + tempPath);
@@ -301,7 +309,7 @@ namespace Squirrel.Cli.Commands
                     await files.ForEachAsync(x => SignPEFile(x, signingOpts));
                 }
 
-                Context.ErrorIfThrows(() =>
+                this.ErrorIfThrows(() =>
                     ZipFile.CreateFromDirectory(tempPath, target, CompressionLevel.Optimal, false),
                     "Failed to create Zip file from directory: " + tempPath);
 
@@ -437,7 +445,7 @@ namespace Squirrel.Cli.Commands
                 templateData[String.Format("IdAsGuid{0}", i)] = Squirrel.Utility.CreateGuidFromHash(String.Format("{0}:{1}", package.Id, i)).ToString();
             }
 
-            var templateResult = Squirrel.CopStache.Render(templateText, templateData);
+            var templateResult = CopStache.Render(templateText, templateData);
 
             var wxsTarget = Path.Combine(setupExeDir, "Setup.wxs");
             File.WriteAllText(wxsTarget, templateResult, Encoding.UTF8);

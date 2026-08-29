@@ -164,10 +164,37 @@ namespace Squirrel.Tests.Core
             return value;
         }
 
-        [Fact(Skip = "Rewrite this test, the original uses too many heavyweight fixtures")]
+        [Fact]
         public void ApplyMultipleDeltaPackagesGeneratesCorrectHash()
         {
-            Assert.True(false, "Rewrite this test, the original uses too many heavyweight fixtures");
+            var basePackage = new ReleasePackage(IntegrationTestHelper.GetPath("fixtures", "Squirrel.Core.1.0.0.0-full.nupkg"));
+            var deltaPackage = new ReleasePackage(IntegrationTestHelper.GetPath("fixtures", "Squirrel.Core.1.1.0.0-delta.nupkg"));
+            var expectedPackageFile = IntegrationTestHelper.GetPath("fixtures", "Squirrel.Core.1.1.0.0-full.nupkg");
+            var outFile = Path.Combine(Path.GetTempPath(), "Squirrel.Core.1.1.0.0-full.nupkg");
+
+            try {
+                var deltaBuilder = new DeltaPackageBuilder();
+                deltaBuilder.ApplyDeltaPackage(basePackage, deltaPackage, outFile);
+
+                Assert.True(File.Exists(outFile));
+
+                var result = new ZipPackage(outFile);
+                var expected = new ZipPackage(expectedPackageFile);
+
+                result.Id.ShouldEqual(expected.Id);
+                result.Version.ShouldEqual(expected.Version);
+
+                var actualEntry = ReleaseEntry.GenerateFromFile(outFile);
+                var expectedEntry = ReleaseEntry.GenerateFromFile(expectedPackageFile);
+
+                actualEntry.PackageName.ShouldEqual(expectedEntry.PackageName);
+                actualEntry.Version.ShouldEqual(expectedEntry.Version);
+                actualEntry.IsDelta.ShouldEqual(false);
+            } finally {
+                if (File.Exists(outFile)) {
+                    File.Delete(outFile);
+                }
+            }
         }
     }
 

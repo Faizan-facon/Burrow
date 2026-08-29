@@ -537,15 +537,13 @@ namespace Squirrel.Tests
         [Fact]
         public void UnshimOurselvesSmokeTest()
         {
-            // NB: This smoke test is really more of a manual test - try it
-            // by shimming Slack, then verifying the shim goes away
-            var appDir = Environment.ExpandEnvironmentVariables(@"%LocalAppData%\Slack");
-            var fixture = new UpdateManager.ApplyReleasesImpl(appDir);
-
-            fixture.unshimOurselves();
+            using (Utility.WithTempDirectory(out var appDir)) {
+                var fixture = new UpdateManager.ApplyReleasesImpl(appDir);
+                fixture.unshimOurselves();
+            }
         }
 
-        [Fact(Skip = "This test is currently failing in CI")]
+        [Fact]
         public async Task GetShortcutsSmokeTest()
         {
             string remotePkgPath;

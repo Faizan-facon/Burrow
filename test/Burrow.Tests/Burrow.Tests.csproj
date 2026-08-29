@@ -21,10 +21,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.8.0" />
     <PackageReference Include="xunit" Version="2.1.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.1.0" PrivateAssets="All" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta2-18618-05" ExcludeAssets="build;analyzers" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.SourceLink.Common" Version="1.0.0-beta2-18618-05" ExcludeAssets="build;analyzers" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.Build.Tasks.Git" Version="1.0.0-beta2-18618-05" ExcludeAssets="build;analyzers" PrivateAssets="all" />
-    <PackageReference Include="Nerdbank.GitVersioning" Version="3.4.240" ExcludeAssets="build;analyzers" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

@@ -29,6 +29,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
 
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+
       - name: Build Burrow
         shell: cmd
         run: .\src\build_official.cmd

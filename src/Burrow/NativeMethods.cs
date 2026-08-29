@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -148,8 +148,8 @@ namespace Squirrel
             [MarshalAs(UnmanagedType.I8)] CreateFlags resetFlags,
             string sourceName,
             string targetName,
-            string sourceOptionsName,
-            string targetOptionsName,
+            string? sourceOptionsName,
+            string? targetOptionsName,
             DeltaInput globalOptions,
             IntPtr targetFileTime,
             [MarshalAs(UnmanagedType.U4)] HashAlgId hashAlgId,

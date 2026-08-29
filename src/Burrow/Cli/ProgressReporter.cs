@@ -12,7 +12,7 @@ namespace Squirrel.Cli
         void StartTask(ProgressTask task);
         void StopTask(ProgressTask task);
         void Increment(ProgressTask task, double value = 1);
-        void Update(ProgressTask task, double value, string description = null);
+        void Update(ProgressTask task, double value, string? description = null);
         void Finish(ProgressTask task);
         IDisposable CreateProgressContext(bool autoClear = true);
         IDisposable CreateStatusContext(string status, Spinner? spinner = null);
@@ -73,7 +73,7 @@ namespace Squirrel.Cli
             }
         }
 
-        public void Update(ProgressTask task, double value, string description = null)
+        public void Update(ProgressTask task, double value, string? description = null)
         {
             if (task is SpectreProgressTask spectreTask)
             {

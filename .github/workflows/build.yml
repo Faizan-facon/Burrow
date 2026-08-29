@@ -32,6 +32,15 @@ jobs:
       - name: Setup NuGet
         uses: nuget/setup-nuget@v2
 
+      - name: Install C++ ATL Tools
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify ^
+            --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" ^
+            --add Microsoft.VisualStudio.Component.VC.ATL ^
+            --add Microsoft.VisualStudio.Component.VC.ATLMFC ^
+            --quiet --norestart
+
       - name: Build Burrow
         shell: cmd
         run: .\src\build_official.cmd

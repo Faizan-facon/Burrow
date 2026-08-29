@@ -19,7 +19,7 @@ env:
 jobs:
   build:
     name: Build
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,16 +31,6 @@ jobs:
 
       - name: Setup NuGet
         uses: nuget/setup-nuget@v2
-
-      - name: Install C++ ATL Tools
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-          $vsPath = & $vswhere -latest -property installationPath
-          Write-Host "Found Visual Studio at: $vsPath"
-          $proc = Start-Process -FilePath $installer -ArgumentList "modify --installPath `"$vsPath`" --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.VC.ATLMFC --passive --norestart" -Wait -PassThru
-          Write-Host "vs_installer finished with exit code: $($proc.ExitCode)"
 
       - name: Build Burrow
         shell: cmd
